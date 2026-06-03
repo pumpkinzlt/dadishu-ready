@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Mole Rush Arena</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <section id="startScreen" class="screen active home-screen">
+      <div class="bg-orbs" aria-hidden="true"></div>
+      <div class="hero-card pop-in">
+        <div class="brand-kicker">Arcade Whack Challenge</div>
+        <h1>Mole Rush Arena</h1>
+        <p class="subtitle">Whack sneaky moles, collect coins, unlock skins, and climb the local leaderboard.</p>
+        <div class="auth-card" id="authCard">
+          <div class="auth-status">
+            <div>
+              <small>Account</small>
+              <strong id="authStatus">Guest Mode</strong>
+            </div>
+            <button id="logoutBtn" type="button" class="btn small ghost" data-auth="logout" hidden>Log Out</button>
+          </div>
+          <div id="authForm" class="auth-form">
+            <div class="auth-fields">
+              <input id="authEmailInput" type="email" maxlength="60" placeholder="Email" autocomplete="email" />
+              <input id="authPasswordInput" type="password" maxlength="32" placeholder="Password" autocomplete="current-password" />
+            </div>
+            <div class="auth-actions no-guest-action">
+              <button id="loginBtn" type="button" class="btn small primary" data-auth="login">Log In</button>
+              <button id="registerBtn" type="button" class="btn small" data-auth="register">Register</button>
+            </div>
+            <p id="authMessage" class="auth-message" role="status" aria-live="polite">Enter email and password, then choose Log In or Register.</p>
+            <p class="auth-note">Beginner Mode works without login. Progress is saved locally on this device.</p>
+          </div>
+        </div>
+        <label class="name-box" for="playerNameInput">
+          <span>Player Nickname</span>
+          <input id="playerNameInput" type="text" maxlength="16" placeholder="Enter nickname" autocomplete="off" />
+        </label>
+        <div class="home-actions">
+          <button type="button" id="startGameBtn" class="btn primary" data-action="start-game">Beginner Mode</button>
+          <button type="button" class="btn" data-screen="modeScreen">Mode Select</button>
+          <button type="button" class="btn" data-screen="shopScreen">Shop</button>
+          <button type="button" class="btn" data-screen="leaderboardScreen">Leaderboard</button>
+          <button type="button" class="btn ghost" data-screen="settingsScreen">Settings</button>
+        </div>
+      </div>
+      <div class="stat-strip">
+        <div><span id="homeCoins">0</span><small>Coins</small></div>
+        <div><span id="homeBest">0</span><small>Best Score</small></div>
+        <div><span id="homeSkin">Classic</span><small>Skin</small></div>
+      </div>
+    </section>
+
+    <section id="modeScreen" class="screen panel-screen">
+      <div class="topbar">
+        <button type="button" class="icon-btn" data-screen="startScreen" aria-label="Back">←</button>
+        <h2>Choose Mode</h2>
+      </div>
+      <div class="cards three">
+        <article class="mode-card selected" data-mode="classic">
+          <div class="mode-icon">🏆</div>
+          <h3>Classic Mode</h3>
+          <p><b>Login mode.</b> Balanced 60-second high-score run with normal, gold, fast, and bad moles.</p>
+          <button type="button" class="btn small primary" data-mode-start="classic">Play Classic</button>
+        </article>
+        <article class="mode-card" data-mode="arena">
+          <div class="mode-icon">⚡</div>
+          <h3>Arena Mode</h3>
+          <p><b>Login mode.</b> Faster spawns, more rivals, stronger pressure, and a live AI ranking board.</p>
+          <button type="button" class="btn small primary" data-mode-start="arena">Enter Arena</button>
+        </article>
+        <article class="mode-card" data-mode="level">
+          <div class="mode-icon">⭐</div>
+          <h3>Level Mode</h3>
+          <p><b>Login mode.</b> Each level has a target score, tighter miss limits, and 1-3 star progress.</p>
+          <button type="button" class="btn small primary" data-mode-start="level">Select Level</button>
+        </article>
+      </div>
+      <div id="levelGrid" class="level-grid" aria-label="Level selection"></div>
+    </section>
+
+    <section id="gameScreen" class="screen game-screen">
+      <canvas id="gameCanvas" aria-label="Mole Rush Arena game canvas"></canvas>
+      <div class="hud top-hud">
+        <div class="hud-pill"><small>Score</small><b id="hudScore">0</b></div>
+        <div class="hud-pill"><small>Best</small><b id="hudBest">0</b></div>
+        <div class="hud-pill coin"><small>Coins</small><b id="hudCoins">0</b></div>
+        <div class="hud-pill wide"><small>Mode</small><b id="hudMode">Classic</b></div>
+        <button type="button" id="pauseBtn" class="hud-button">Pause</button>
+      </div>
+      <div class="hud side-hud">
+        <h4>Live Board</h4>
+        <ol id="miniLeaderboard"></ol>
+      </div>
+      <div class="hud bottom-hud">
+        <button type="button" class="item-btn" data-item="shield"><span>🛡️</span><b>Shield</b><em id="item-shield-count">0</em></button>
+        <button type="button" class="item-btn" data-item="magnet"><span>🧲</span><b>Magnet</b><em id="item-magnet-count">0</em></button>
+        <button type="button" class="item-btn" data-item="double"><span>💰</span><b>2x Coins</b><em id="item-double-count">0</em></button>
+        <button type="button" class="item-btn" data-item="bomb"><span>💣</span><b>Bomb</b><em id="item-bomb-count">0</em></button>
+        <button type="button" class="item-btn" data-item="speed"><span>⏱️</span><b>Focus</b><em id="item-speed-count">0</em></button>
+        <button type="button" class="item-btn" data-item="revive"><span>❤️</span><b>Revive</b><em id="item-revive-count">0</em></button>
+      </div>
+      <div id="mobileControls" class="mobile-controls" aria-label="Mobile controls">
+        <div class="dpad">
+          <button type="button" data-move="up">▲</button>
+          <button type="button" data-move="left">◀</button>
+          <button type="button" data-move="right">▶</button>
+          <button type="button" data-move="down">▼</button>
+        </div>
+        <button type="button" id="mobileSkillBtn" class="skill-btn">WHACK</button>
+      </div>
+      <div id="pauseOverlay" class="overlay hidden">
+        <div class="modal pause-modal">
+          <h2>Paused</h2>
+          <p>Press P or tap Resume to continue.</p>
+          <div class="modal-actions">
+            <button type="button" id="resumeBtn" class="btn primary">Resume</button>
+            <button type="button" id="restartFromPauseBtn" class="btn">Restart</button>
+            <button type="button" id="homeFromPauseBtn" class="btn ghost">Home</button>
+          </div>
+        </div>
+      </div>
+      <div id="gameOverOverlay" class="overlay hidden">
+        <div class="modal gameover-modal">
+          <span class="modal-badge">Game Over</span>
+          <h2 id="gameOverTitle">Game Over</h2>
+          <div class="result-grid">
+            <div><small>Score</small><b id="goScore">0</b></div>
+            <div><small>Best Score</small><b id="goBest">0</b></div>
+            <div><small>Coins Earned</small><b id="goCoins">0</b></div>
+            <div><small>Stars</small><b id="goStars">—</b></div>
+          </div>
+          <div id="goTip" class="go-tip"></div>
+          <div class="modal-actions">
+            <button type="button" id="restartBtn" class="btn primary">Restart</button>
+            <button type="button" id="homeBtn" class="btn">Home</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="shopScreen" class="screen panel-screen shop-screen">
+      <div class="topbar">
+        <button type="button" class="icon-btn" data-screen="startScreen" aria-label="Back">←</button>
+        <h2>Shop</h2>
+        <div class="wallet">🪙 <span id="shopCoins">0</span></div>
+      </div>
+      <div class="shop-tabs">
+        <button type="button" class="tab active" data-shop-tab="coins">Coin Packs</button>
+        <button type="button" class="tab" data-shop-tab="items">Items</button>
+        <button type="button" class="tab" data-shop-tab="skins">Skins</button>
+      </div>
+      <div id="coinsShop" class="shop-panel active"></div>
+      <div id="itemsShop" class="shop-panel"></div>
+      <div id="skinsShop" class="shop-panel"></div>
+    </section>
+
+    <section id="leaderboardScreen" class="screen panel-screen leaderboard-screen">
+      <div class="topbar">
+        <button type="button" class="icon-btn" data-screen="startScreen" aria-label="Back">←</button>
+        <h2>Leaderboard</h2>
+      </div>
+      <div class="leader-card">
+        <table>
+          <thead>
+            <tr><th>Rank</th><th>Player</th><th>Mode</th><th>Score</th><th>Date</th></tr>
+          </thead>
+          <tbody id="leaderboardBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="settingsScreen" class="screen panel-screen settings-screen">
+      <div class="topbar">
+        <button type="button" class="icon-btn" data-screen="startScreen" aria-label="Back">←</button>
+        <h2>Settings</h2>
+      </div>
+      <div class="settings-card">
+        <label class="switch-row"><span>Background Music</span><input id="musicToggle" type="checkbox" /><i></i></label>
+        <label class="switch-row"><span>Sound Effects</span><input id="sfxToggle" type="checkbox" /><i></i></label>
+        <div class="control-help">
+          <h3>Controls</h3>
+          <p><b>PC:</b> Move the hammer with WASD / Arrow Keys, press Space to whack, P to pause, R to restart. You can also click/tap directly on moles.</p>
+          <p><b>Mobile:</b> Tap a mole to whack it, use the virtual D-pad for hammer movement, and tap the WHACK button for a quick hit.</p>
+        </div>
+        <button type="button" id="resetDataBtn" class="btn danger">Reset Data</button>
+      </div>
+    </section>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="https://www.roomilo.com/js/core/crypto-js.min.js"></script>
+  <script src="https://www.roomilo.com/js/core/PayApi-v2.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>

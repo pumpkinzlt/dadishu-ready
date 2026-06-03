@@ -1,0 +1,1751 @@
+(() => {
+  'use strict';
+
+  const SAVE_KEY = 'moleRushArenaSave_v1';
+  const ACCOUNTS_KEY = 'moleRushArenaAccounts_v1';
+  const CURRENT_USER_KEY = 'moleRushArenaCurrentUser_v1';
+  const PAYMENT_PENDING_KEY = 'moleRushArenaPendingPayment_v1';
+  const VERSION = 1;
+  const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
+  const rand = (min, max) => Math.random() * (max - min) + min;
+  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+  const todayISO = () => new Date().toISOString().slice(0, 10);
+  const formatDate = stamp => new Date(stamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const shortName = name => (name || 'Player').slice(0, 16);
+
+  const coinPacks = [
+    { id: 'starter', name: 'Starter Pack', price: '$0.99', amount: 0.99, coins: 100, emoji: '🪙', desc: 'A light coin boost for casual runs.' },
+    { id: 'mini', name: 'Mini Pack', price: '$2.99', amount: 2.99, coins: 350, emoji: '💰', desc: 'Great for unlocking your first item set.' },
+    { id: 'popular', name: 'Popular Pack', price: '$4.99', amount: 4.99, coins: 650, emoji: '✨', desc: 'A balanced choice for skins and power-ups.' },
+    { id: 'best', name: 'Best Value Pack', price: '$9.99', amount: 9.99, coins: 1400, emoji: '🏆', desc: 'Best value for competitive players.' },
+    { id: 'pro', name: 'Pro Pack', price: '$19.99', amount: 19.99, coins: 3000, emoji: '🚀', desc: 'A strong arcade upgrade bundle.' },
+    { id: 'mega', name: 'Mega Pack', price: '$49.99', amount: 49.99, coins: 8000, emoji: '👑', desc: 'The largest coin pack for collectors.' }
+  ];
+
+  const paymentMethods = [
+    { type: 8004, label: 'Credit Card' },
+    { type: 8003, label: 'Apple Pay' },
+    { type: 8012, label: 'Google Pay' }
+  ];
+
+  const itemDefs = {
+    shield: { name: 'Shield', emoji: '🛡️', cost: 120, duration: 20000, cooldown: 9000, desc: 'Blocks one miss or bad mole hit.' },
+    magnet: { name: 'Magnet', emoji: '🧲', cost: 150, duration: 12000, cooldown: 14000, desc: 'Pulls bonus coins into your wallet.' },
+    double: { name: 'Double Coins', emoji: '💰', cost: 180, duration: 15000, cooldown: 18000, desc: 'Doubles all coins earned for a short time.' },
+    bomb: { name: 'Bomb', emoji: '💣', cost: 220, duration: 0, cooldown: 12000, desc: 'Whacks every visible mole instantly.' },
+    speed: { name: 'Focus Boost', emoji: '⏱️', cost: 160, duration: 12000, cooldown: 15000, desc: 'Slows mole hide speed and improves reaction time.' },
+    revive: { name: 'Revive', emoji: '❤️', cost: 300, duration: 0, cooldown: 0, desc: 'Automatically gives one more chance after defeat.' }
+  };
+
+  const skins = [
+    { id: 'classic', name: 'Classic', cost: 0, emoji: '🔨', colors: { head: '#8b5a3c', face: '#c88b55', accent: '#ffc54d', hammer: '#f0d5a4' }, desc: 'The default arcade look.' },
+    { id: 'neon', name: 'Neon Nova', cost: 500, emoji: '💎', colors: { head: '#3547ff', face: '#35f1ff', accent: '#ff4dff', hammer: '#43e3ff' }, desc: 'Bright cyber arcade style.' },
+    { id: 'pirate', name: 'Pirate Pop', cost: 650, emoji: '🏴‍☠️', colors: { head: '#4d2d20', face: '#d18a55', accent: '#ff4d55', hammer: '#e5b35b' }, desc: 'A mischievous pirate mole crew.' },
+    { id: 'robot', name: 'Robo Tapper', cost: 850, emoji: '🤖', colors: { head: '#536477', face: '#a8d9ff', accent: '#63ff9a', hammer: '#c7d5e6' }, desc: 'Chrome, lights, and clean hits.' },
+    { id: 'royal', name: 'Royal Smash', cost: 1100, emoji: '👑', colors: { head: '#6c3fa6', face: '#ffd083', accent: '#ffe36b', hammer: '#ffe36b' }, desc: 'Premium crown energy.' },
+    { id: 'ice', name: 'Arctic Blink', cost: 1250, emoji: '❄️', colors: { head: '#6cc7ff', face: '#e6fbff', accent: '#9ffff1', hammer: '#b8f4ff' }, desc: 'Cool, clean, and frosty.' }
+  ];
+
+  const levels = Array.from({ length: 12 }, (_, i) => ({
+    level: i + 1,
+    time: clamp(45 - i, 30, 45),
+    target: 90 + i * 35,
+    missLimit: clamp(5 - Math.floor(i / 4), 2, 5),
+    star2: 125 + i * 42,
+    star3: 165 + i * 52
+  }));
+
+  const defaultLeaderboard = [
+    { name: 'Mia', score: 780, mode: 'Arena', date: Date.now() - 86400000 * 3 },
+    { name: 'Noah', score: 710, mode: 'Classic', date: Date.now() - 86400000 * 2 },
+    { name: 'Ava', score: 640, mode: 'Level', date: Date.now() - 86400000 * 5 },
+    { name: 'Leo', score: 585, mode: 'Classic', date: Date.now() - 86400000 * 1 },
+    { name: 'Zoe', score: 540, mode: 'Arena', date: Date.now() - 86400000 * 4 }
+  ];
+
+
+  function normalizeEmail(email) {
+    return String(email || '').trim().toLowerCase();
+  }
+
+  function shortHash(str) {
+    let hash = 5381;
+    for (let i = 0; i < str.length; i++) hash = ((hash << 5) + hash) ^ str.charCodeAt(i);
+    return (hash >>> 0).toString(36);
+  }
+
+  function passwordHash(email, password) {
+    return shortHash(`${normalizeEmail(email)}::${String(password || '')}::mole-rush-local-demo`);
+  }
+
+  function loadAccounts() {
+    try {
+      const raw = localStorage.getItem(ACCOUNTS_KEY);
+      const parsed = raw ? JSON.parse(raw) : {};
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch (err) {
+      console.warn('Account load failed, using empty account list.', err);
+      return {};
+    }
+  }
+
+  function saveAccounts() {
+    localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts));
+  }
+
+  function safeAccountKey(email) {
+    return normalizeEmail(email).replace(/[^a-z0-9._-]/g, '_');
+  }
+
+  function loadCurrentUser(accountsMap) {
+    const email = normalizeEmail(localStorage.getItem(CURRENT_USER_KEY));
+    return email && accountsMap[email] ? email : '';
+  }
+
+  let accounts = loadAccounts();
+  let currentUser = loadCurrentUser(accounts);
+
+  function currentSaveKey(email = currentUser) {
+    return email ? `${SAVE_KEY}_account_${safeAccountKey(email)}` : SAVE_KEY;
+  }
+
+  function defaultSave() {
+    return {
+      version: VERSION,
+      playerName: 'Player',
+      bestScore: 0,
+      coins: 300,
+      ownedSkins: ['classic'],
+      equippedSkin: 'classic',
+      ownedItems: { shield: 1, magnet: 1, double: 1, bomb: 1, speed: 1, revive: 1 },
+      levelProgress: { unlocked: 1, stars: {} },
+      leaderboard: defaultLeaderboard,
+      settings: { music: true, sfx: true },
+      dailyReward: { claimed: false, amount: 20 },
+      lastLoginDate: ''
+    };
+  }
+
+  function loadSave() {
+    try {
+      const raw = localStorage.getItem(currentSaveKey());
+      const base = defaultSave();
+      if (currentUser && accounts[currentUser] && accounts[currentUser].playerName) base.playerName = accounts[currentUser].playerName;
+      if (!raw) return base;
+      const parsed = JSON.parse(raw);
+      return {
+        ...base,
+        ...parsed,
+        ownedItems: { ...base.ownedItems, ...(parsed.ownedItems || {}) },
+        levelProgress: { ...base.levelProgress, ...(parsed.levelProgress || {}) },
+        settings: { ...base.settings, ...(parsed.settings || {}) },
+        dailyReward: { ...base.dailyReward, ...(parsed.dailyReward || {}) },
+        leaderboard: Array.isArray(parsed.leaderboard) ? parsed.leaderboard : base.leaderboard
+      };
+    } catch (err) {
+      console.warn('Save load failed, using default save.', err);
+      return defaultSave();
+    }
+  }
+
+  let save = loadSave();
+
+  function persist() {
+    save.version = VERSION;
+    localStorage.setItem(currentSaveKey(), JSON.stringify(save));
+  }
+
+  function toast(message) {
+    const el = document.getElementById('toast');
+    el.textContent = message;
+    el.classList.add('show');
+    clearTimeout(toast._timer);
+    toast._timer = setTimeout(() => el.classList.remove('show'), 1900);
+  }
+
+  class AudioManager {
+    constructor() {
+      this.ctx = null;
+      this.musicTimer = null;
+      this.musicOn = false;
+    }
+    ensure() {
+      try {
+        if (!this.ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (!AudioCtx) return null;
+          this.ctx = new AudioCtx();
+        }
+        if (this.ctx.state === 'suspended') this.ctx.resume().catch?.(() => {});
+        return this.ctx;
+      } catch (err) {
+        console.warn('Audio is unavailable in this browser session.', err);
+        return null;
+      }
+    }
+    tone(freq, duration = 0.12, type = 'sine', gain = 0.06, slide = 0) {
+      if (!save.settings.sfx) return;
+      const ctx = this.ensure();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const amp = ctx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, now);
+      if (slide) osc.frequency.exponentialRampToValueAtTime(Math.max(35, freq + slide), now + duration);
+      amp.gain.setValueAtTime(0.0001, now);
+      amp.gain.exponentialRampToValueAtTime(gain, now + 0.015);
+      amp.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+      osc.connect(amp).connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + duration + 0.02);
+    }
+    play(name) {
+      try {
+        const map = {
+        click: () => this.tone(520, 0.07, 'triangle', 0.035),
+        score: () => { this.tone(720, 0.07, 'square', 0.035); setTimeout(() => this.tone(960, 0.08, 'triangle', 0.032), 55); },
+        coin: () => { this.tone(980, 0.08, 'triangle', 0.04); setTimeout(() => this.tone(1320, 0.08, 'sine', 0.03), 50); },
+        item: () => { this.tone(380, 0.11, 'sawtooth', 0.035); setTimeout(() => this.tone(620, 0.12, 'triangle', 0.035), 80); },
+        hurt: () => this.tone(160, 0.2, 'sawtooth', 0.055, -80),
+        over: () => { this.tone(260, 0.18, 'triangle', 0.055, -70); setTimeout(() => this.tone(150, 0.25, 'sawtooth', 0.045, -50), 150); }
+        };
+        map[name]?.();
+      } catch (err) {
+        console.warn('Sound effect failed safely.', err);
+      }
+    }
+    startMusic() {
+      if (!save.settings.music || this.musicOn) return;
+      const ctx = this.ensure();
+      if (!ctx) return;
+      this.musicOn = true;
+      const notes = [196, 247, 294, 330, 294, 247, 220, 247];
+      let step = 0;
+      const playStep = () => {
+        if (!this.musicOn || !save.settings.music) return;
+        const now = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        const amp = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(notes[step % notes.length], now);
+        amp.gain.setValueAtTime(0.0001, now);
+        amp.gain.exponentialRampToValueAtTime(0.026, now + 0.04);
+        amp.gain.exponentialRampToValueAtTime(0.0001, now + 0.42);
+        osc.connect(amp).connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.48);
+        step++;
+      };
+      playStep();
+      this.musicTimer = setInterval(playStep, 480);
+    }
+    stopMusic() {
+      this.musicOn = false;
+      clearInterval(this.musicTimer);
+      this.musicTimer = null;
+    }
+  }
+
+  const audio = new AudioManager();
+
+  const screens = [...document.querySelectorAll('.screen')];
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  const pointer = { x: 0, y: 0, down: false, active: false, lastMove: 0 };
+  const keyState = new Set();
+
+  const UI = {
+    playerNameInput: document.getElementById('playerNameInput'),
+    authStatus: document.getElementById('authStatus'),
+    authForm: document.getElementById('authForm'),
+    logoutBtn: document.getElementById('logoutBtn'),
+    startGameBtn: document.getElementById('startGameBtn'),
+    authEmailInput: document.getElementById('authEmailInput'),
+    authPasswordInput: document.getElementById('authPasswordInput'),
+    authMessage: document.getElementById('authMessage'),
+    loginBtn: document.getElementById('loginBtn'),
+    registerBtn: document.getElementById('registerBtn'),
+    homeCoins: document.getElementById('homeCoins'),
+    homeBest: document.getElementById('homeBest'),
+    homeSkin: document.getElementById('homeSkin'),
+    hudScore: document.getElementById('hudScore'),
+    hudBest: document.getElementById('hudBest'),
+    hudCoins: document.getElementById('hudCoins'),
+    hudMode: document.getElementById('hudMode'),
+    miniLeaderboard: document.getElementById('miniLeaderboard'),
+    pauseOverlay: document.getElementById('pauseOverlay'),
+    gameOverOverlay: document.getElementById('gameOverOverlay'),
+    goScore: document.getElementById('goScore'),
+    goBest: document.getElementById('goBest'),
+    goCoins: document.getElementById('goCoins'),
+    goStars: document.getElementById('goStars'),
+    goTip: document.getElementById('goTip'),
+    shopCoins: document.getElementById('shopCoins'),
+    leaderboardBody: document.getElementById('leaderboardBody'),
+    musicToggle: document.getElementById('musicToggle'),
+    sfxToggle: document.getElementById('sfxToggle'),
+    levelGrid: document.getElementById('levelGrid')
+  };
+
+  class MoleGame {
+    constructor() {
+      this.mode = 'classic';
+      this.level = 1;
+      this.running = false;
+      this.paused = false;
+      this.finished = false;
+      this.last = performance.now();
+      this.w = 0;
+      this.h = 0;
+      this.dpr = 1;
+      this.holes = [];
+      this.moles = [];
+      this.particles = [];
+      this.texts = [];
+      this.coins = [];
+      this.ripples = [];
+      this.ai = [];
+      this.score = 0;
+      this.coinsEarned = 0;
+      this.misses = 0;
+      this.combo = 0;
+      this.timeLeft = 60;
+      this.missLimit = 5;
+      this.targetScore = 0;
+      this.spawnTimer = 0;
+      this.spawnInterval = 900;
+      this.hammer = { x: 0, y: 0, vx: 0, vy: 0, angle: 0, swing: 0, radius: 36 };
+      this.effects = { shield: 0, magnet: 0, double: 0, speed: 0, revived: false };
+      this.cooldowns = { shield: 0, magnet: 0, double: 0, bomb: 0, speed: 0, revive: 0 };
+      this.shake = 0;
+      this.bgTime = 0;
+      this.activeLoopToken = 0;
+      this.loop = this.loop.bind(this);
+    }
+
+    resize() {
+      this.dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+      const rect = canvas.getBoundingClientRect();
+      this.w = Math.floor(rect.width);
+      this.h = Math.floor(rect.height);
+      canvas.width = Math.floor(this.w * this.dpr);
+      canvas.height = Math.floor(this.h * this.dpr);
+      ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+      this.buildHoles();
+      if (!this.hammer.x) {
+        this.hammer.x = this.w / 2;
+        this.hammer.y = this.h * 0.55;
+      }
+    }
+
+    buildHoles() {
+      const usableTop = this.h < 560 ? 90 : 120;
+      const usableBottom = this.h < 560 ? 110 : 120;
+      const cols = this.w < 680 ? 3 : 4;
+      const rows = this.h < 520 ? 2 : 3;
+      const marginX = this.w < 680 ? 38 : 90;
+      const areaW = Math.max(220, this.w - marginX * 2 - (this.w > 980 ? 170 : 0));
+      const areaH = Math.max(190, this.h - usableTop - usableBottom);
+      const startX = marginX;
+      const startY = usableTop;
+      this.holes = [];
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const x = startX + (areaW * (c + 0.5)) / cols;
+          const y = startY + (areaH * (r + 0.5)) / rows;
+          const size = clamp(Math.min(areaW / cols, areaH / rows) * 0.36, 42, 76);
+          this.holes.push({ x, y, r: size, mole: null });
+        }
+      }
+    }
+
+    start(mode = this.mode, level = this.level) {
+      this.mode = mode;
+      this.level = level;
+      this.running = true;
+      this.paused = false;
+      this.finished = false;
+      document.getElementById('gameScreen').classList.remove('menu-cursor');
+      pointer.down = false;
+      pointer.active = false;
+      keyState.clear();
+      this.score = 0;
+      this.coinsEarned = 0;
+      this.misses = 0;
+      this.combo = 0;
+      this.particles.length = 0;
+      this.texts.length = 0;
+      this.coins.length = 0;
+      this.ripples.length = 0;
+      this.moles.length = 0;
+      this.shake = 0;
+      this.spawnTimer = 200;
+      this.effects = { shield: 0, magnet: 0, double: 0, speed: 0, revived: false };
+      this.cooldowns = { shield: 0, magnet: 0, double: 0, bomb: 0, speed: 0, revive: 0 };
+      this.ai = [
+        { name: 'Rex', score: rand(0, 25), speed: rand(0.5, 1.1) },
+        { name: 'Luna', score: rand(0, 25), speed: rand(0.5, 1.2) },
+        { name: 'Bolt', score: rand(0, 25), speed: rand(0.6, 1.3) }
+      ];
+      if (mode === 'level') {
+        const cfg = levels[level - 1] || levels[0];
+        this.timeLeft = cfg.time;
+        this.missLimit = cfg.missLimit;
+        this.targetScore = cfg.target;
+      } else if (mode === 'arena') {
+        this.timeLeft = 75;
+        this.missLimit = 4;
+        this.targetScore = 0;
+      } else if (mode === 'beginner') {
+        this.timeLeft = 60;
+        this.missLimit = 8;
+        this.targetScore = 0;
+      } else {
+        this.timeLeft = 60;
+        this.missLimit = 5;
+        this.targetScore = 0;
+      }
+      this.resize();
+      this.hammer.x = this.w / 2;
+      this.hammer.y = Math.min(this.h - 150, this.h * 0.65);
+      this.last = performance.now();
+      this.activeLoopToken += 1;
+      UI.pauseOverlay.classList.add('hidden');
+      UI.gameOverOverlay.classList.add('hidden');
+      updateHUD();
+      this.updateItemButtons();
+      const theme = getModeTheme(this.mode);
+      const intro = this.mode === 'level'
+        ? `Level ${this.level}: Target ${this.targetScore}`
+        : this.mode === 'arena'
+          ? 'Arena Rush: beat the AI rivals!'
+          : this.mode === 'beginner'
+            ? 'Beginner Training: easy warm-up!'
+            : 'Classic Mode: chase the best score!';
+      this.floatText(intro, this.w / 2, Math.min(132, this.h * 0.2), theme.spark);
+      audio.startMusic();
+      const token = this.activeLoopToken;
+      requestAnimationFrame(now => this.loop(now, token));
+    }
+
+    loop(now, token = this.activeLoopToken) {
+      if (token !== this.activeLoopToken) return;
+      const dt = Math.min(33, now - this.last);
+      this.last = now;
+      if (this.running && !this.paused && !this.finished) this.update(dt);
+      this.draw();
+      if (this.running) requestAnimationFrame(nextNow => this.loop(nextNow, token));
+    }
+
+    update(dt) {
+      this.bgTime += dt * 0.001;
+      const sec = dt / 1000;
+      this.timeLeft -= sec;
+      this.spawnTimer -= dt;
+      this.shake = Math.max(0, this.shake - dt * 0.04);
+      Object.keys(this.effects).forEach(k => {
+        if (typeof this.effects[k] === 'number') this.effects[k] = Math.max(0, this.effects[k] - dt);
+      });
+      Object.keys(this.cooldowns).forEach(k => this.cooldowns[k] = Math.max(0, this.cooldowns[k] - dt));
+      this.updateHammer(dt);
+      const elapsedBase = this.mode === 'arena' ? 75 : this.mode === 'level' ? (levels[this.level - 1] || levels[0]).time : 60;
+      let difficulty = 1 + Math.min(1.35, (this.score / 420) + ((elapsedBase - this.timeLeft) / 110));
+      if (this.mode === 'beginner') difficulty = 1 + Math.min(0.75, (this.score / 620) + ((elapsedBase - this.timeLeft) / 160));
+      if (this.mode === 'arena') difficulty += 0.32;
+      if (this.mode === 'level') difficulty += Math.min(0.45, this.level * 0.045);
+      const speedMod = this.effects.speed > 0 ? 0.72 : 1;
+      if (this.mode === 'beginner') this.spawnInterval = clamp(1120 / difficulty, 520, 1120);
+      else if (this.mode === 'arena') this.spawnInterval = clamp(760 / difficulty, 300, 760);
+      else if (this.mode === 'level') this.spawnInterval = clamp((940 - this.level * 18) / difficulty, 330, 900);
+      else this.spawnInterval = clamp(940 / difficulty, 390, 940);
+      if (this.spawnTimer <= 0) {
+        this.spawnMole(difficulty);
+        if (this.mode === 'arena' && Math.random() > 0.48) this.spawnMole(difficulty);
+        if (this.mode === 'level' && this.level >= 7 && Math.random() > 0.72) this.spawnMole(difficulty);
+        this.spawnTimer = this.spawnInterval * rand(0.75, 1.18);
+      }
+      for (const mole of this.moles) mole.update(dt * speedMod);
+      this.moles = this.moles.filter(mole => {
+        if (mole.dead) {
+          if (mole.hole.mole === mole) mole.hole.mole = null;
+          return false;
+        }
+        return true;
+      });
+      this.updateParticles(dt);
+      this.updateCoins(dt);
+      this.updateRipples(dt);
+      if (this.mode === 'arena') {
+        for (const rival of this.ai) rival.score += rival.speed * difficulty * sec * 8;
+      }
+      if (this.timeLeft <= 0 || this.misses >= this.missLimit) {
+        if (this.canRevive()) {
+          this.consumeRevive();
+        } else {
+          this.endGame();
+        }
+      }
+      updateHUD();
+      this.updateItemButtons();
+    }
+
+    updateHammer(dt) {
+      const step = (this.effects.speed > 0 ? 0.55 : 0.42) * dt;
+      let dx = 0, dy = 0;
+      if (keyState.has('arrowleft') || keyState.has('a')) dx -= 1;
+      if (keyState.has('arrowright') || keyState.has('d')) dx += 1;
+      if (keyState.has('arrowup') || keyState.has('w')) dy -= 1;
+      if (keyState.has('arrowdown') || keyState.has('s')) dy += 1;
+      if (dx || dy) {
+        const len = Math.hypot(dx, dy) || 1;
+        this.hammer.x = clamp(this.hammer.x + dx / len * step, 16, this.w - 16);
+        this.hammer.y = clamp(this.hammer.y + dy / len * step, 70, this.h - 42);
+      } else if (pointer.active) {
+        // Keep the custom hammer cursor locked to the real pointer.
+        // The previous eased interpolation made the hammer visibly trail behind the mouse.
+        this.hammer.x = clamp(pointer.x, 16, this.w - 16);
+        this.hammer.y = clamp(pointer.y, 70, this.h - 42);
+      }
+      this.hammer.swing = Math.max(0, this.hammer.swing - dt * 0.005);
+      this.hammer.angle = Math.sin(this.bgTime * 3.2) * 0.08 - this.hammer.swing * 1.2;
+    }
+
+    spawnMole(difficulty) {
+      const free = this.holes.filter(h => !h.mole);
+      if (!free.length) return;
+      const hole = pick(free);
+      const roll = Math.random();
+      let type = 'normal';
+      if (this.mode === 'beginner') {
+        if (roll > 0.92) type = 'gold';
+        else if (roll > 0.84 && this.score > 180) type = 'fast';
+      } else if (this.mode === 'arena') {
+        if (roll > 0.88) type = 'gold';
+        else if (roll > 0.66 && this.score > 40) type = 'bad';
+        else if (roll > 0.42 && this.score > 70) type = 'fast';
+      } else if (this.mode === 'level') {
+        if (roll > 0.9) type = 'gold';
+        else if (roll > 0.76 && this.level >= 3) type = 'bad';
+        else if (roll > 0.62 && this.level >= 2) type = 'fast';
+      } else {
+        if (roll > 0.9) type = 'gold';
+        else if (roll > 0.8 && this.score > 80) type = 'bad';
+        else if (roll > 0.69 && this.score > 130) type = 'fast';
+      }
+      const baseLife = this.mode === 'beginner' ? rand(1150, 1650) : this.mode === 'arena' ? rand(760, 1150) : this.mode === 'level' ? rand(880, 1360) : rand(950, 1420);
+      const minLife = this.mode === 'beginner' ? 690 : this.mode === 'arena' ? 430 : 520;
+      const maxLife = this.mode === 'beginner' ? 1650 : this.mode === 'arena' ? 1260 : 1450;
+      const life = clamp(baseLife / difficulty, minLife, maxLife) * (type === 'fast' ? 0.72 : 1) * (this.effects.speed > 0 ? 1.25 : 1);
+      const mole = new Mole(hole, type, life, this);
+      hole.mole = mole;
+      this.moles.push(mole);
+    }
+
+    whack(x = this.hammer.x, y = this.hammer.y, fromBomb = false) {
+      if (!this.running || this.paused || this.finished) return;
+      this.hammer.swing = 1;
+      audio.play('click');
+      this.ripples.push({ x, y, r: 0, a: 1, color: 'rgba(255,207,77,' });
+      const hitRadius = fromBomb ? Infinity : clamp(this.w * 0.045, 38, 62);
+      let hit = false;
+      const visible = this.moles.filter(m => m.isHittable());
+      visible.sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y));
+      for (const mole of visible) {
+        if (Math.hypot(mole.x - x, mole.y - y) <= hitRadius || fromBomb) {
+          this.hitMole(mole, fromBomb);
+          hit = true;
+          if (!fromBomb) break;
+        }
+      }
+      if (!hit && !fromBomb) this.registerMiss(x, y, 'Miss');
+    }
+
+    hitMole(mole, fromBomb) {
+      if (!mole.isHittable()) return;
+      mole.hit();
+      if (mole.type === 'bad') {
+        this.registerMiss(mole.x, mole.y, 'Ouch!');
+        return;
+      }
+      this.combo += 1;
+      const base = mole.type === 'gold' ? 24 : mole.type === 'fast' ? 16 : 10;
+      const comboBonus = Math.min(10, Math.floor(this.combo / 4));
+      const modeBonus = this.mode === 'arena' ? 1.18 : this.mode === 'level' ? 1.05 + Math.min(this.level, 12) * 0.012 : 1;
+      const points = Math.round((base + comboBonus + (fromBomb ? 3 : 0)) * modeBonus);
+      const coinBase = mole.type === 'gold' ? 6 : this.mode === 'arena' ? 3 : 2;
+      const coinGain = (coinBase + Math.floor(this.combo / 5)) * (this.effects.double > 0 ? 2 : 1);
+      this.score += points;
+      this.coinsEarned += coinGain;
+      audio.play(mole.type === 'gold' ? 'coin' : 'score');
+      this.floatText(`+${points}`, mole.x, mole.y - 38, mole.type === 'gold' ? '#ffdf64' : '#ffffff');
+      this.floatText(`+${coinGain} 🪙`, mole.x + 16, mole.y - 12, '#ffcf4d');
+      this.spawnCoinBurst(mole.x, mole.y, coinGain);
+      this.spark(mole.x, mole.y, mole.type === 'gold' ? '#ffdf64' : '#43e3ff', 16);
+    }
+
+    registerMiss(x, y, label) {
+      if (this.effects.shield > 0) {
+        this.effects.shield = 0;
+        this.floatText('Blocked!', x, y - 25, '#64ff9a');
+        this.spark(x, y, '#64ff9a', 20);
+        audio.play('item');
+        return;
+      }
+      this.misses += 1;
+      this.combo = 0;
+      this.shake = 9;
+      this.floatText(label, x, y - 18, '#ff5470');
+      this.spark(x, y, '#ff5470', 12);
+      audio.play('hurt');
+    }
+
+    useItem(id) {
+      if (!this.running || this.paused || this.finished) return;
+      const item = itemDefs[id];
+      if (!item) return;
+      if ((save.ownedItems[id] || 0) <= 0) return toast(`You need to buy ${item.name} first.`);
+      if (this.cooldowns[id] > 0) return toast(`${item.name} is cooling down.`);
+      if (['shield', 'magnet', 'double', 'speed'].includes(id) && this.effects[id] > 0) return toast(`${item.name} is already active.`);
+      save.ownedItems[id] -= 1;
+      this.cooldowns[id] = item.cooldown;
+      if (id === 'bomb') {
+        this.whack(this.w / 2, this.h / 2, true);
+        this.ripples.push({ x: this.w / 2, y: this.h / 2, r: 10, a: 1, color: 'rgba(255,84,112,' });
+        this.shake = 12;
+      } else if (id === 'revive') {
+        this.effects.revived = false;
+        this.floatText('Revive Ready', this.hammer.x, this.hammer.y - 40, '#ff94a6');
+      } else {
+        this.effects[id] = item.duration;
+        this.floatText(`${item.name}!`, this.hammer.x, this.hammer.y - 40, '#64ff9a');
+      }
+      persist();
+      updateAllUI();
+      this.updateItemButtons();
+      audio.play('item');
+    }
+
+    canRevive() {
+      return !this.effects.revived && (save.ownedItems.revive || 0) > 0;
+    }
+
+    consumeRevive() {
+      save.ownedItems.revive -= 1;
+      persist();
+      this.effects.revived = true;
+      this.timeLeft = Math.max(this.timeLeft, 16);
+      this.misses = Math.max(0, this.missLimit - 2);
+      this.floatText('Revived!', this.w / 2, this.h / 2 - 80, '#ff94a6');
+      this.spark(this.w / 2, this.h / 2, '#ff94a6', 42);
+      this.shake = 0;
+      audio.play('item');
+      updateAllUI();
+    }
+
+    pause() {
+      if (!this.running || this.finished) return;
+      this.paused = true;
+      pointer.down = false;
+      pointer.active = false;
+      document.getElementById('gameScreen').classList.add('menu-cursor');
+      UI.pauseOverlay.classList.remove('hidden');
+      audio.stopMusic();
+    }
+
+    resume() {
+      if (!this.running || this.finished) return;
+      this.paused = false;
+      this.last = performance.now();
+      document.getElementById('gameScreen').classList.remove('menu-cursor');
+      UI.pauseOverlay.classList.add('hidden');
+      audio.startMusic();
+    }
+
+    endGame() {
+      if (this.finished) return;
+      this.finished = true;
+      this.running = false;
+      this.activeLoopToken += 1;
+      pointer.down = false;
+      pointer.active = false;
+      keyState.clear();
+      document.getElementById('gameScreen').classList.add('menu-cursor');
+      audio.play('over');
+      audio.stopMusic();
+      save.coins += this.coinsEarned;
+      const modeName = modeDisplayName(this.mode, this.level);
+      save.bestScore = Math.max(save.bestScore || 0, this.score);
+      save.leaderboard.push({ name: shortName(save.playerName), score: this.score, mode: modeName, date: Date.now(), isLocal: true });
+      save.leaderboard = save.leaderboard.sort((a, b) => b.score - a.score).slice(0, 30);
+      let stars = '—';
+      if (this.mode === 'level') {
+        const cfg = levels[this.level - 1];
+        const starCount = this.score >= cfg.star3 ? 3 : this.score >= cfg.star2 ? 2 : this.score >= cfg.target ? 1 : 0;
+        stars = '★'.repeat(starCount) + '☆'.repeat(3 - starCount);
+        save.levelProgress.stars[this.level] = Math.max(save.levelProgress.stars[this.level] || 0, starCount);
+        if (starCount > 0) save.levelProgress.unlocked = Math.max(save.levelProgress.unlocked, this.level + 1);
+      }
+      persist();
+      updateAllUI();
+      UI.goScore.textContent = this.score;
+      UI.goBest.textContent = save.bestScore;
+      UI.goCoins.textContent = this.coinsEarned;
+      UI.goStars.textContent = stars;
+      const outcome = this.mode === 'level' && this.score < this.targetScore
+        ? `Target was ${this.targetScore}. Upgrade items and try again.`
+        : this.mode === 'arena'
+          ? `Final arena rank: #${this.getArenaRank()}.`
+          : this.mode === 'beginner'
+            ? 'Beginner run complete. Register or log in to keep progress under an account.'
+            : 'Nice run. Keep your combo alive for bigger coin rewards.';
+      UI.goTip.textContent = outcome;
+      UI.gameOverOverlay.classList.remove('hidden');
+    }
+
+    getArenaRank() {
+      const rows = [{ name: shortName(save.playerName), score: this.score }, ...this.ai.map(a => ({ name: a.name, score: Math.floor(a.score) }))]
+        .sort((a, b) => b.score - a.score);
+      return rows.findIndex(r => r.name === shortName(save.playerName) && r.score === this.score) + 1;
+    }
+
+    updateParticles(dt) {
+      for (const p of this.particles) {
+        p.x += p.vx * dt / 16;
+        p.y += p.vy * dt / 16;
+        p.vy += 0.045 * dt / 16;
+        p.life -= dt;
+        p.rot += p.spin * dt / 16;
+      }
+      this.particles = this.particles.filter(p => p.life > 0);
+      for (const t of this.texts) {
+        t.y -= t.vy * dt / 16;
+        t.life -= dt;
+        t.scale += dt * 0.0003;
+      }
+      this.texts = this.texts.filter(t => t.life > 0);
+    }
+
+    updateCoins(dt) {
+      const rect = UI.hudCoins.getBoundingClientRect();
+      const canvasRect = canvas.getBoundingClientRect();
+      const target = { x: rect.left + rect.width / 2 - canvasRect.left, y: rect.top + rect.height / 2 - canvasRect.top };
+      for (const c of this.coins) {
+        const shouldFly = c.life < 650 || this.effects.magnet > 0;
+        if (shouldFly) {
+          const dx = target.x - c.x;
+          const dy = target.y - c.y;
+          const d = Math.hypot(dx, dy) || 1;
+          c.vx += dx / d * (this.effects.magnet > 0 ? 0.56 : 0.34);
+          c.vy += dy / d * (this.effects.magnet > 0 ? 0.56 : 0.34);
+          if (d < 16) c.life = 0;
+        }
+        c.x += c.vx * dt / 16;
+        c.y += c.vy * dt / 16;
+        if (!shouldFly) c.vy += 0.06 * dt / 16;
+        c.vx *= 0.99;
+        c.vy *= 0.99;
+        c.life -= dt;
+      }
+      this.coins = this.coins.filter(c => c.life > 0);
+    }
+
+    updateRipples(dt) {
+      for (const r of this.ripples) {
+        r.r += dt * 0.25;
+        r.a -= dt * 0.0028;
+      }
+      this.ripples = this.ripples.filter(r => r.a > 0);
+    }
+
+    floatText(text, x, y, color) {
+      this.texts.push({ text, x, y, color, life: 850, vy: 1.2, scale: 1 });
+    }
+
+    spark(x, y, color, count = 10) {
+      for (let i = 0; i < count; i++) {
+        const a = rand(0, Math.PI * 2);
+        const s = rand(1.4, 6.3);
+        this.particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 1.2, size: rand(2, 6), color, life: rand(350, 820), rot: rand(0, 6), spin: rand(-0.2, 0.2) });
+      }
+    }
+
+    spawnCoinBurst(x, y, amount) {
+      const count = clamp(Math.ceil(amount / 2), 1, 9);
+      for (let i = 0; i < count; i++) {
+        this.coins.push({ x, y, vx: rand(-2.4, 2.4), vy: rand(-4.5, -1.4), life: rand(650, 1150), r: rand(5, 8) });
+      }
+    }
+
+    updateItemButtons() {
+      document.querySelectorAll('.item-btn').forEach(btn => {
+        const id = btn.dataset.item;
+        const count = save.ownedItems[id] || 0;
+        const countEl = btn.querySelector('em');
+        if (countEl) countEl.textContent = count;
+        btn.classList.toggle('empty', count <= 0);
+        btn.classList.toggle('cooldown', this.cooldowns[id] > 0);
+        btn.classList.toggle('active-effect', this.effects[id] > 0);
+        const seconds = Math.ceil((this.cooldowns[id] || 0) / 1000);
+        btn.title = seconds > 0 ? `${itemDefs[id].name} cooldown: ${seconds}s` : itemDefs[id].name;
+      });
+    }
+
+    draw() {
+      const sx = this.shake ? rand(-this.shake, this.shake) : 0;
+      const sy = this.shake ? rand(-this.shake, this.shake) : 0;
+      ctx.save();
+      ctx.clearRect(0, 0, this.w, this.h);
+      ctx.translate(sx, sy);
+      this.drawBackground();
+      for (const hole of this.holes) this.drawHole(hole);
+      for (const mole of this.moles) mole.draw(ctx);
+      this.drawCoins();
+      this.drawRipples();
+      this.drawParticles();
+      this.drawTexts();
+      this.drawStatusBar();
+      this.drawHammer();
+      ctx.restore();
+    }
+
+    drawBackground() {
+      const theme = getModeTheme(this.mode);
+      const g = ctx.createLinearGradient(0, 0, 0, this.h);
+      g.addColorStop(0, theme.top);
+      g.addColorStop(0.56, theme.mid);
+      g.addColorStop(1, theme.bottom);
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, this.w, this.h);
+      ctx.save();
+      for (let i = 0; i < 65; i++) {
+        const x = (i * 97 + Math.sin(this.bgTime + i) * 20) % this.w;
+        const y = (i * 53 + Math.cos(this.bgTime * 0.8 + i) * 12) % this.h;
+        ctx.globalAlpha = this.mode === 'arena' ? 0.26 : 0.18;
+        ctx.fillStyle = i % 3 === 0 ? theme.spark : '#ffffff';
+        ctx.beginPath(); ctx.arc(x, y, i % 4 === 0 ? 1.7 : 1.1, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+      const groundY = this.h * 0.72;
+      const grd = ctx.createLinearGradient(0, groundY - 120, 0, this.h);
+      grd.addColorStop(0, theme.ground1);
+      grd.addColorStop(0.45, 'rgba(255,255,255,0.08)');
+      grd.addColorStop(1, theme.ground2);
+      ctx.fillStyle = grd;
+      ctx.beginPath();
+      ctx.moveTo(0, groundY + Math.sin(this.bgTime) * 8);
+      for (let x = 0; x <= this.w; x += 60) {
+        ctx.lineTo(x, groundY + Math.sin(this.bgTime + x * 0.018) * 16);
+      }
+      ctx.lineTo(this.w, this.h);
+      ctx.lineTo(0, this.h);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    drawHole(hole) {
+      ctx.save();
+      ctx.translate(hole.x, hole.y);
+      ctx.scale(1.45, 0.55);
+      const g = ctx.createRadialGradient(0, -4, hole.r * 0.15, 0, 0, hole.r);
+      g.addColorStop(0, '#120a08');
+      g.addColorStop(0.58, '#251511');
+      g.addColorStop(1, 'rgba(0,0,0,0.08)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(0, 0, hole.r, 0, Math.PI * 2); ctx.fill();
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    drawCoins() {
+      for (const c of this.coins) {
+        ctx.save();
+        ctx.globalAlpha = clamp(c.life / 400, 0, 1);
+        ctx.fillStyle = '#ffcf4d';
+        ctx.strokeStyle = '#fff2a6';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#6d4500';
+        ctx.font = `${c.r * 1.25}px Arial`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('$', c.x, c.y + 0.5);
+        ctx.restore();
+      }
+    }
+
+    drawRipples() {
+      for (const r of this.ripples) {
+        ctx.save();
+        ctx.globalAlpha = r.a;
+        ctx.strokeStyle = `${r.color}${r.a})`;
+        ctx.lineWidth = 5;
+        ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    drawParticles() {
+      for (const p of this.particles) {
+        ctx.save();
+        ctx.globalAlpha = clamp(p.life / 450, 0, 1);
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+        ctx.restore();
+      }
+    }
+
+    drawTexts() {
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      for (const t of this.texts) {
+        ctx.globalAlpha = clamp(t.life / 300, 0, 1);
+        ctx.font = `900 ${Math.floor(22 * t.scale)}px Inter, Arial`;
+        ctx.lineWidth = 5;
+        ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+        ctx.strokeText(t.text, t.x, t.y);
+        ctx.fillStyle = t.color;
+        ctx.fillText(t.text, t.x, t.y);
+      }
+      ctx.restore();
+    }
+
+    drawStatusBar() {
+      const barW = clamp(this.w * 0.32, 190, 360);
+      const x = this.w / 2 - barW / 2;
+      const y = this.h < 560 ? 72 : 78;
+      const pct = clamp(this.timeLeft / (this.mode === 'arena' ? 75 : this.mode === 'level' ? (levels[this.level - 1] || levels[0]).time : 60), 0, 1);
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,0,0,0.26)';
+      roundRect(ctx, x, y, barW, 16, 8); ctx.fill();
+      const g = ctx.createLinearGradient(x, 0, x + barW, 0);
+      g.addColorStop(0, '#64ff9a');
+      g.addColorStop(0.55, '#ffcf4d');
+      g.addColorStop(1, '#ff5470');
+      ctx.fillStyle = g;
+      roundRect(ctx, x, y, barW * pct, 16, 8); ctx.fill();
+      const theme = getModeTheme(this.mode);
+      ctx.fillStyle = theme.chip;
+      roundRect(ctx, this.w / 2 - 110, y - 46, 220, 24, 12); ctx.fill();
+      ctx.fillStyle = theme.spark;
+      ctx.font = '1000 12px Inter, Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(theme.label.toUpperCase(), this.w / 2, y - 34);
+      ctx.fillStyle = '#f6fbff';
+      ctx.font = '900 13px Inter, Arial';
+      ctx.textBaseline = 'bottom';
+      const detail = this.mode === 'level'
+        ? `Level ${this.level} • Target ${this.targetScore} • Misses ${this.misses}/${this.missLimit}`
+        : this.mode === 'arena'
+          ? `Arena • Rank #${this.getArenaRank()} • Time ${Math.ceil(this.timeLeft)}s • Misses ${this.misses}/${this.missLimit}`
+          : this.mode === 'beginner'
+            ? `Beginner • Easy pace • Time ${Math.ceil(this.timeLeft)}s • Misses ${this.misses}/${this.missLimit}`
+            : `Classic • High Score • Time ${Math.ceil(this.timeLeft)}s • Misses ${this.misses}/${this.missLimit}`;
+      ctx.fillText(detail, this.w / 2, y - 5);
+      const effectLabels = [];
+      if (this.effects.shield > 0) effectLabels.push('Shield');
+      if (this.effects.magnet > 0) effectLabels.push('Magnet');
+      if (this.effects.double > 0) effectLabels.push('2x Coins');
+      if (this.effects.speed > 0) effectLabels.push('Focus');
+      if (effectLabels.length) {
+        ctx.fillStyle = 'rgba(100,255,154,.16)';
+        roundRect(ctx, this.w / 2 - 105, y + 22, 210, 28, 14); ctx.fill();
+        ctx.fillStyle = '#64ff9a';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(effectLabels.join(' • '), this.w / 2, y + 36);
+      }
+      ctx.restore();
+    }
+
+    drawHammer() {
+      const skin = skins.find(s => s.id === save.equippedSkin) || skins[0];
+      const x = this.hammer.x;
+      const y = this.hammer.y;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(this.hammer.angle);
+      ctx.globalAlpha = 0.95;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = '#4b2f22';
+      ctx.lineWidth = 10;
+      ctx.beginPath(); ctx.moveTo(18, 24); ctx.lineTo(52, 70); ctx.stroke();
+      ctx.strokeStyle = skin.colors.hammer;
+      ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.moveTo(18, 22); ctx.lineTo(52, 70); ctx.stroke();
+      ctx.fillStyle = '#30242b';
+      roundRect(ctx, -33, -24, 70, 32, 12); ctx.fill();
+      const hg = ctx.createLinearGradient(-33, -24, 37, 8);
+      hg.addColorStop(0, skin.colors.hammer);
+      hg.addColorStop(1, '#ffffff');
+      ctx.fillStyle = hg;
+      roundRect(ctx, -26, -18, 58, 22, 10); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,.55)';
+      roundRect(ctx, -18, -14, 20, 6, 3); ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  class Mole {
+    constructor(hole, type, life, game) {
+      this.hole = hole;
+      this.type = type;
+      this.game = game;
+      this.life = life;
+      this.maxLife = life;
+      this.phase = 'rise';
+      this.t = 0;
+      this.hitTime = 0;
+      this.dead = false;
+      this.pop = 0;
+      this.x = hole.x;
+      this.y = hole.y;
+      this.seed = Math.random() * 100;
+    }
+    update(dt) {
+      this.t += dt;
+      if (this.phase === 'rise') {
+        this.pop = clamp(this.t / 190, 0, 1);
+        if (this.pop >= 1) { this.phase = 'up'; this.t = 0; }
+      } else if (this.phase === 'up') {
+        this.life -= dt;
+        if (this.life <= 0) { this.phase = 'hide'; this.t = 0; }
+      } else if (this.phase === 'hit') {
+        this.hitTime += dt;
+        this.pop = clamp(1 - this.hitTime / 420, 0, 1);
+        if (this.hitTime > 500) this.dead = true;
+      } else if (this.phase === 'hide') {
+        this.pop = clamp(1 - this.t / 210, 0, 1);
+        if (this.pop <= 0) {
+          if (this.type !== 'bad') this.game.registerMiss(this.x, this.y, 'Escaped!');
+          this.dead = true;
+        }
+      }
+    }
+    isHittable() { return this.phase === 'up' || this.phase === 'rise'; }
+    hit() { this.phase = 'hit'; this.hitTime = 0; this.pop = 1; }
+    draw(ctx) {
+      const skin = skins.find(s => s.id === save.equippedSkin) || skins[0];
+      const r = this.hole.r;
+      const pop = easeOutBack(this.pop);
+      const bodyY = this.hole.y + r * 0.18 - pop * r * 1.2;
+      const scale = this.phase === 'hit' ? 1 + Math.sin(this.hitTime * 0.04) * 0.05 : 1;
+      this.x = this.hole.x;
+      this.y = bodyY;
+      ctx.save();
+      ctx.translate(this.hole.x, bodyY);
+      ctx.scale(scale, scale);
+      const typeAccent = this.type === 'gold' ? '#ffdf64' : this.type === 'bad' ? '#ff5470' : this.type === 'fast' ? '#64ff9a' : skin.colors.accent;
+      ctx.globalAlpha = clamp(pop + 0.1, 0, 1);
+      ctx.fillStyle = 'rgba(0,0,0,.22)';
+      ctx.beginPath(); ctx.ellipse(0, r * 1.02, r * 0.72, r * 0.18, 0, 0, Math.PI * 2); ctx.fill();
+      if (this.phase === 'hit') {
+        ctx.fillStyle = 'rgba(255,84,112,.18)';
+        ctx.beginPath(); ctx.arc(0, r * -0.1, r * 1.08, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.fillStyle = skin.colors.head;
+      ctx.beginPath(); ctx.arc(0, 0, r * 0.64, Math.PI, 0); ctx.lineTo(r * 0.64, r * 0.62); ctx.quadraticCurveTo(0, r * 0.85, -r * 0.64, r * 0.62); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = skin.colors.face;
+      ctx.beginPath(); ctx.ellipse(0, r * 0.26, r * 0.42, r * 0.34, 0, 0, Math.PI * 2); ctx.fill();
+      // ears
+      ctx.fillStyle = skin.colors.head;
+      ctx.beginPath(); ctx.arc(-r * 0.45, -r * 0.18, r * 0.2, 0, Math.PI * 2); ctx.arc(r * 0.45, -r * 0.18, r * 0.2, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = skin.colors.face;
+      ctx.beginPath(); ctx.arc(-r * 0.45, -r * 0.18, r * 0.11, 0, Math.PI * 2); ctx.arc(r * 0.45, -r * 0.18, r * 0.11, 0, Math.PI * 2); ctx.fill();
+      // eyes
+      ctx.fillStyle = '#0d1320';
+      const eyeY = this.phase === 'hit' ? -r * 0.04 : -r * 0.02;
+      if (this.phase === 'hit') {
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = '#0d1320';
+        ctx.beginPath(); ctx.moveTo(-r * 0.28, eyeY - 5); ctx.lineTo(-r * 0.14, eyeY + 5); ctx.moveTo(-r * 0.14, eyeY - 5); ctx.lineTo(-r * 0.28, eyeY + 5); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(r * 0.14, eyeY - 5); ctx.lineTo(r * 0.28, eyeY + 5); ctx.moveTo(r * 0.28, eyeY - 5); ctx.lineTo(r * 0.14, eyeY + 5); ctx.stroke();
+      } else {
+        ctx.beginPath(); ctx.arc(-r * 0.22, eyeY, r * 0.055, 0, Math.PI * 2); ctx.arc(r * 0.22, eyeY, r * 0.055, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.fillStyle = '#5d3324';
+      ctx.beginPath(); ctx.ellipse(0, r * 0.18, r * 0.11, r * 0.07, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#5d3324';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(0, r * 0.24); ctx.quadraticCurveTo(-r * 0.12, r * 0.34, -r * 0.24, r * 0.27); ctx.moveTo(0, r * 0.24); ctx.quadraticCurveTo(r * 0.12, r * 0.34, r * 0.24, r * 0.27); ctx.stroke();
+      // type icon / helmet
+      ctx.fillStyle = typeAccent;
+      if (this.type === 'bad') {
+        ctx.beginPath(); ctx.moveTo(-r * 0.42, -r * 0.54); ctx.lineTo(-r * 0.14, -r * 0.28); ctx.lineTo(-r * 0.5, -r * 0.18); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(r * 0.42, -r * 0.54); ctx.lineTo(r * 0.14, -r * 0.28); ctx.lineTo(r * 0.5, -r * 0.18); ctx.closePath(); ctx.fill();
+      } else {
+        roundRect(ctx, -r * 0.25, -r * 0.64, r * 0.5, r * 0.18, r * 0.08); ctx.fill();
+      }
+      if (this.type === 'gold') {
+        ctx.fillStyle = '#fff3a8';
+        ctx.font = `900 ${r * 0.25}px Arial`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('$', 0, -r * 0.52);
+      }
+      // tears and bump on hit
+      if (this.phase === 'hit') {
+        ctx.fillStyle = '#74dcff';
+        ctx.beginPath(); ctx.ellipse(-r * 0.31, r * 0.18 + this.hitTime * 0.02, r * 0.055, r * 0.12, 0.2, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(r * 0.31, r * 0.2 + this.hitTime * 0.018, r * 0.055, r * 0.12, -0.2, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#ff6c8c';
+        ctx.beginPath(); ctx.arc(0, -r * 0.68, r * 0.12 + Math.sin(this.hitTime * 0.04) * 2, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,.45)';
+        ctx.beginPath(); ctx.arc(-r * 0.04, -r * 0.71, r * 0.035, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+
+  function roundRect(ctx, x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function easeOutBack(x) {
+    const c1 = 1.70158;
+    const c3 = c1 + 1;
+    return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2);
+  }
+
+  const game = new MoleGame();
+
+  function isLoggedIn() {
+    return !!(currentUser && accounts[currentUser]);
+  }
+
+  function modeDisplayName(mode, level = 1) {
+    if (mode === 'level') return `Level ${level}`;
+    if (mode === 'arena') return 'Arena';
+    if (mode === 'beginner') return 'Beginner';
+    return 'Classic';
+  }
+
+  function modeButtonLabel(mode) {
+    if (mode === 'arena') return 'Enter Arena';
+    if (mode === 'level') return 'Select Level';
+    return 'Play Classic';
+  }
+
+  function getModeTheme(mode) {
+    const themes = {
+      beginner: { top: '#0b2542', mid: '#143a47', bottom: '#12342d', ground1: 'rgba(76,185,115,0.14)', ground2: 'rgba(56,148,87,0.52)', spark: '#64ff9a', label: 'Beginner Training', chip: 'rgba(100,255,154,.17)' },
+      classic: { top: '#09172a', mid: '#102e40', bottom: '#0a201f', ground1: 'rgba(45,154,116,0.08)', ground2: 'rgba(55,139,77,0.72)', spark: '#43e3ff', label: 'Classic High Score', chip: 'rgba(67,227,255,.16)' },
+      arena: { top: '#170c2f', mid: '#371345', bottom: '#111b3a', ground1: 'rgba(255,84,112,0.12)', ground2: 'rgba(117,48,147,0.68)', spark: '#ff5470', label: 'Arena Rival Rush', chip: 'rgba(255,84,112,.18)' },
+      level: { top: '#072622', mid: '#0f433f', bottom: '#0b1f31', ground1: 'rgba(255,207,77,0.11)', ground2: 'rgba(30,125,99,0.72)', spark: '#ffcf4d', label: 'Level Target Run', chip: 'rgba(255,207,77,.18)' }
+    };
+    return themes[mode] || themes.classic;
+  }
+
+  function getMainStartMode() {
+    return isLoggedIn() ? (game.mode && game.mode !== 'beginner' ? game.mode : 'classic') : 'beginner';
+  }
+
+  function requireLoginForMode(mode) {
+    if (isLoggedIn() || mode === 'beginner') return true;
+    const message = 'Register or log in to unlock Classic, Arena, and Level modes.';
+    setAuthMessage(message, 'error');
+    toast(message);
+    return false;
+  }
+
+  function showScreen(id) {
+    screens.forEach(s => s.classList.toggle('active', s.id === id));
+    if (id !== 'gameScreen') {
+      game.running = false;
+      game.activeLoopToken += 1;
+      pointer.down = false;
+      pointer.active = false;
+      keyState.clear();
+      audio.stopMusic();
+      canvas.style.cursor = 'auto';
+      document.getElementById('gameScreen').classList.add('menu-cursor');
+    }
+    updateAllUI();
+  }
+
+
+  function setAuthMessage(message, type = 'info') {
+    if (!UI.authMessage) return;
+    UI.authMessage.textContent = message || '';
+    UI.authMessage.classList.toggle('error', type === 'error');
+    UI.authMessage.classList.toggle('success', type === 'success');
+  }
+
+  function updateAuth() {
+    if (!UI.authStatus) return;
+    if (isLoggedIn()) {
+      UI.authStatus.textContent = `Signed in: ${accounts[currentUser].email}`;
+      UI.authForm.hidden = true;
+      UI.logoutBtn.hidden = false;
+      if (UI.startGameBtn) {
+        UI.startGameBtn.textContent = 'Start Game';
+        UI.startGameBtn.title = 'Start the selected game mode.';
+      }
+      setAuthMessage('Signed in. Your progress is saved under this account.', 'success');
+    } else {
+      UI.authStatus.textContent = 'Guest Mode';
+      UI.authForm.hidden = false;
+      UI.logoutBtn.hidden = true;
+      if (UI.startGameBtn) {
+        UI.startGameBtn.textContent = 'Beginner Mode';
+        UI.startGameBtn.title = 'Start a beginner run without logging in.';
+      }
+      setAuthMessage('Enter email and password, then choose Log In or Register.', 'info');
+    }
+  }
+
+  function updateHome() {
+    UI.playerNameInput.value = save.playerName || 'Player';
+    UI.homeCoins.textContent = save.coins || 0;
+    UI.homeBest.textContent = save.bestScore || 0;
+    UI.homeSkin.textContent = (skins.find(s => s.id === save.equippedSkin) || skins[0]).name;
+  }
+
+  function updateHUD() {
+    UI.hudScore.textContent = game.score;
+    UI.hudBest.textContent = save.bestScore || 0;
+    UI.hudCoins.textContent = (save.coins || 0) + game.coinsEarned;
+    UI.hudMode.textContent = modeDisplayName(game.mode, game.level);
+    updateMiniLeaderboard();
+  }
+
+  function updateMiniLeaderboard() {
+    const player = { name: shortName(save.playerName), score: game.score };
+    const rows = game.mode === 'arena'
+      ? [player, ...game.ai.map(a => ({ name: a.name, score: Math.floor(a.score) }))].sort((a, b) => b.score - a.score)
+      : [player, ...save.leaderboard.slice(0, 4).map(r => ({ name: r.name, score: r.score }))].sort((a, b) => b.score - a.score).slice(0, 5);
+    UI.miniLeaderboard.innerHTML = rows.map(r => `<li><span>${escapeHTML(r.name)}</span><b>${Math.floor(r.score)}</b></li>`).join('');
+  }
+
+  function updateShop() {
+    UI.shopCoins.textContent = save.coins || 0;
+    const paymentOptions = paymentMethods.map(method => `<option value="${method.type}">${method.label}</option>`).join('');
+    document.getElementById('coinsShop').innerHTML = `
+      <div class="payment-box">
+        <div>
+          <h3>Secure Coin Top-Up</h3>
+          <p>Choose a payment method, then complete payment through the connected checkout service.</p>
+        </div>
+        <label>
+          <span>Payment Method</span>
+          <select id="paymentTypeSelect" aria-label="Payment method">${paymentOptions}</select>
+        </label>
+      </div>
+      <div class="shop-card-grid">
+        ${coinPacks.map(pack => `
+          <article class="shop-card">
+            <div class="emoji">${pack.emoji}</div>
+            <h3>${pack.name}</h3>
+            <p>${pack.desc}</p>
+            <div class="price"><span>${pack.price}</span><span>${pack.coins} Coins</span></div>
+            <button type="button" class="btn primary small" data-buy-pack="${pack.id}">Pay Now</button>
+          </article>
+        `).join('')}
+      </div>
+    `;
+    document.getElementById('itemsShop').innerHTML = Object.entries(itemDefs).map(([id, item]) => `
+      <article class="shop-card">
+        <div class="emoji">${item.emoji}</div>
+        <h3>${item.name}</h3>
+        <p>${item.desc}</p>
+        <div class="price"><span>${item.cost} Coins</span><span>Owned: ${save.ownedItems[id] || 0}</span></div>
+        <button type="button" class="btn primary small" data-buy-item="${id}">Buy</button>
+      </article>
+    `).join('');
+    document.getElementById('skinsShop').innerHTML = skins.map(skin => {
+      const owned = save.ownedSkins.includes(skin.id);
+      const equipped = save.equippedSkin === skin.id;
+      const action = equipped ? 'Equipped' : owned ? 'Equip' : `Unlock ${skin.cost}`;
+      return `
+        <article class="shop-card">
+          <div class="emoji" style="background:linear-gradient(135deg, ${skin.colors.head}, ${skin.colors.accent});">${skin.emoji}</div>
+          <h3>${skin.name}</h3>
+          <p>${skin.desc}</p>
+          <div class="price"><span>${skin.cost ? skin.cost + ' Coins' : 'Free'}</span><span>${owned ? 'Owned' : 'Locked'}</span></div>
+          <button type="button" class="btn ${equipped ? '' : 'primary'} small" data-skin-action="${skin.id}" ${equipped ? 'disabled' : ''}>${action}</button>
+        </article>
+      `;
+    }).join('');
+  }
+
+  function updateLeaderboard() {
+    const rows = [...save.leaderboard].sort((a, b) => b.score - a.score).slice(0, 20);
+    UI.leaderboardBody.innerHTML = rows.map((r, i) => `
+      <tr>
+        <td>#${i + 1}</td>
+        <td>${escapeHTML(r.isLocal ? shortName(save.playerName) : r.name)}</td>
+        <td>${escapeHTML(r.mode || 'Classic')}</td>
+        <td><b>${Math.floor(r.score)}</b></td>
+        <td>${formatDate(r.date || Date.now())}</td>
+      </tr>
+    `).join('');
+  }
+
+  function updateSettings() {
+    UI.musicToggle.checked = !!save.settings.music;
+    UI.sfxToggle.checked = !!save.settings.sfx;
+  }
+
+  function updateLevels() {
+    if (!isLoggedIn()) {
+      UI.levelGrid.innerHTML = '<div class="level-login-lock">🔒 Register or log in to unlock Level Mode, level targets, and saved stars.</div>';
+      return;
+    }
+    const unlocked = save.levelProgress.unlocked || 1;
+    UI.levelGrid.innerHTML = levels.map(cfg => {
+      const locked = cfg.level > unlocked;
+      const starCount = save.levelProgress.stars[cfg.level] || 0;
+      return `<button type="button" class="level-tile ${locked ? 'locked' : ''}" data-level="${cfg.level}" ${locked ? 'disabled' : ''}>
+        <span>Level ${cfg.level}</span><span class="stars">${'★'.repeat(starCount)}${'☆'.repeat(3 - starCount)}</span>
+      </button>`;
+    }).join('');
+  }
+
+  function updateModeAccess() {
+    const loggedIn = isLoggedIn();
+    document.querySelectorAll('[data-mode-start]').forEach(btn => {
+      const mode = btn.dataset.modeStart;
+      const locked = !loggedIn && mode !== 'beginner';
+      const card = btn.closest('.mode-card');
+      card?.classList.toggle('locked-mode', locked);
+      card?.setAttribute('aria-disabled', locked ? 'true' : 'false');
+      btn.textContent = locked ? 'Log In to Play' : modeButtonLabel(mode);
+      btn.classList.toggle('primary', !locked);
+      btn.classList.toggle('ghost', locked);
+      btn.title = locked ? 'Register or log in to unlock this mode.' : '';
+    });
+  }
+
+  function updateAllUI() {
+    updateAuth();
+    updateHome();
+    updateShop();
+    updateLeaderboard();
+    updateSettings();
+    updateLevels();
+    updateModeAccess();
+    if (game.running) {
+      updateHUD();
+      game.updateItemButtons();
+    }
+  }
+
+  function escapeHTML(str) {
+    return String(str || '').replace(/[&<>'"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
+  }
+
+  function syncName() {
+    const name = UI.playerNameInput.value.trim() || 'Player';
+    save.playerName = shortName(name);
+    save.leaderboard = save.leaderboard.map(row => row.isLocal ? { ...row, name: save.playerName } : row);
+    if (currentUser && accounts[currentUser]) {
+      accounts[currentUser].playerName = save.playerName;
+      saveAccounts();
+    }
+    persist();
+  }
+
+  function claimDailyReward() {
+    const d = todayISO();
+    if (save.lastLoginDate !== d) {
+      save.lastLoginDate = d;
+      save.dailyReward = { claimed: true, amount: 20 };
+      save.coins += 20;
+      persist();
+      toast('Daily reward: +20 Coins!');
+    }
+  }
+
+
+  function getAuthInput() {
+    return {
+      email: normalizeEmail(UI.authEmailInput.value),
+      password: UI.authPasswordInput.value || ''
+    };
+  }
+
+  function validateAuthInput(email, password) {
+    if (!/^\S+@\S+\.\S+$/.test(email)) {
+      setAuthMessage('Please enter a valid email address.', 'error');
+      toast('Enter a valid email address.');
+      return false;
+    }
+    if (password.length < 6) {
+      setAuthMessage('Password must be at least 6 characters.', 'error');
+      toast('Password must be at least 6 characters.');
+      return false;
+    }
+    return true;
+  }
+
+  function switchAccount(email) {
+    currentUser = normalizeEmail(email);
+    if (currentUser) localStorage.setItem(CURRENT_USER_KEY, currentUser);
+    else localStorage.removeItem(CURRENT_USER_KEY);
+    save = loadSave();
+    claimDailyReward();
+    updateAllUI();
+  }
+
+  function registerAccount() {
+    const { email, password } = getAuthInput();
+    if (!validateAuthInput(email, password)) return;
+    if (accounts[email]) {
+      setAuthMessage('This email is already registered. Please log in.', 'error');
+      return toast('This email is already registered. Please log in.');
+    }
+    const nickname = shortName(UI.playerNameInput.value.trim() || email.split('@')[0] || 'Player');
+    const accountSave = JSON.parse(JSON.stringify(save));
+    accountSave.playerName = nickname;
+    accountSave.leaderboard = Array.isArray(accountSave.leaderboard)
+      ? accountSave.leaderboard.map(row => row.isLocal ? { ...row, name: nickname } : row)
+      : defaultSave().leaderboard;
+    accounts[email] = { email, password: passwordHash(email, password), playerName: nickname, createdAt: Date.now(), lastLoginAt: Date.now() };
+    saveAccounts();
+    localStorage.setItem(currentSaveKey(email), JSON.stringify(accountSave));
+    UI.authPasswordInput.value = '';
+    switchAccount(email);
+    setAuthMessage('Account registered. You are now signed in.', 'success');
+    toast('Account registered. Your progress is now saved to this login.');
+  }
+
+  function loginAccount() {
+    const { email, password } = getAuthInput();
+    if (!validateAuthInput(email, password)) return;
+    const account = accounts[email];
+    if (!account || account.password !== passwordHash(email, password)) {
+      setAuthMessage('Incorrect email or password.', 'error');
+      return toast('Incorrect email or password.');
+    }
+    account.lastLoginAt = Date.now();
+    saveAccounts();
+    UI.authPasswordInput.value = '';
+    switchAccount(email);
+    setAuthMessage('Logged in successfully.', 'success');
+    toast('Logged in successfully.');
+  }
+
+  function logoutAccount() {
+    syncName();
+    game.mode = 'beginner';
+    game.level = 1;
+    switchAccount('');
+    setAuthMessage('Logged out. Beginner Mode is active now.', 'info');
+    toast('Logged out. Beginner Mode is active now.');
+  }
+
+
+  document.addEventListener('click', e => {
+    const authBtn = e.target.closest('[data-auth]');
+    if (authBtn) {
+      e.preventDefault();
+      const action = authBtn.dataset.auth;
+      if (action === 'register') registerAccount();
+      if (action === 'login') loginAccount();
+      if (action === 'logout') logoutAccount();
+      audio.play('click');
+      return;
+    }
+
+    const btn = e.target.closest('button');
+    if (btn && !btn.disabled) {
+      btn.classList.add('clicked');
+      setTimeout(() => btn.classList.remove('clicked'), 130);
+      audio.play('click');
+    }
+    const screenTarget = e.target.closest('[data-screen]');
+    if (screenTarget) {
+      syncName();
+      showScreen(screenTarget.dataset.screen);
+      if (screenTarget.dataset.screen === 'modeScreen' && !isLoggedIn()) {
+        toast('Only Beginner Mode is available before login. Register or log in to unlock more modes.');
+      }
+    }
+    const start = e.target.closest('[data-action="start-game"]');
+    if (start) {
+      syncName();
+      const startMode = getMainStartMode();
+      showScreen('gameScreen');
+      game.start(startMode, startMode === 'level' ? (game.level || 1) : 1);
+    }
+    const modeStart = e.target.closest('[data-mode-start]');
+    if (modeStart) {
+      syncName();
+      const mode = modeStart.dataset.modeStart;
+      if (!requireLoginForMode(mode)) return;
+      document.querySelectorAll('.mode-card').forEach(card => card.classList.toggle('selected', card.dataset.mode === mode));
+      game.mode = mode;
+      if (mode === 'level') {
+        toast('Choose an unlocked level below.');
+      } else {
+        showScreen('gameScreen');
+        game.start(mode, 1);
+      }
+    }
+    const levelTile = e.target.closest('[data-level]');
+    if (levelTile && !levelTile.disabled) {
+      syncName();
+      if (!requireLoginForMode('level')) return;
+      const level = Number(levelTile.dataset.level) || 1;
+      game.level = level;
+      showScreen('gameScreen');
+      game.start('level', level);
+    }
+    const tab = e.target.closest('[data-shop-tab]');
+    if (tab) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === tab));
+      document.querySelectorAll('.shop-panel').forEach(panel => panel.classList.remove('active'));
+      document.getElementById(`${tab.dataset.shopTab}Shop`).classList.add('active');
+    }
+    const packBtn = e.target.closest('[data-buy-pack]');
+    if (packBtn) buyPack(packBtn.dataset.buyPack);
+    const itemBtn = e.target.closest('[data-buy-item]');
+    if (itemBtn) buyItem(itemBtn.dataset.buyItem);
+    const skinBtn = e.target.closest('[data-skin-action]');
+    if (skinBtn) skinAction(skinBtn.dataset.skinAction);
+    const gameItem = e.target.closest('.item-btn[data-item]');
+    if (gameItem) game.useItem(gameItem.dataset.item);
+  });
+
+  [UI.authEmailInput, UI.authPasswordInput].forEach(input => {
+    input?.addEventListener('keydown', evt => {
+      if (evt.key === 'Enter') {
+        evt.preventDefault();
+        loginAccount();
+      }
+    });
+    input?.addEventListener('input', () => setAuthMessage('Enter email and password, then choose Log In or Register.', 'info'));
+  });
+
+  document.getElementById('pauseBtn').addEventListener('click', () => game.paused ? game.resume() : game.pause());
+  document.getElementById('resumeBtn').addEventListener('click', () => game.resume());
+  document.getElementById('restartFromPauseBtn').addEventListener('click', () => { UI.pauseOverlay.classList.add('hidden'); game.start(game.mode, game.level); });
+  document.getElementById('homeFromPauseBtn').addEventListener('click', () => { UI.pauseOverlay.classList.add('hidden'); showScreen('startScreen'); });
+  document.getElementById('restartBtn').addEventListener('click', () => { pointer.down = false; pointer.active = false; keyState.clear(); UI.gameOverOverlay.classList.add('hidden'); showScreen('gameScreen'); game.start(game.mode, game.level); });
+  document.getElementById('homeBtn').addEventListener('click', () => { pointer.down = false; pointer.active = false; keyState.clear(); UI.gameOverOverlay.classList.add('hidden'); showScreen('startScreen'); });
+  document.getElementById('mobileSkillBtn').addEventListener('click', () => game.whack());
+
+  UI.playerNameInput.addEventListener('change', () => { syncName(); updateAllUI(); });
+  UI.playerNameInput.addEventListener('blur', () => { syncName(); updateAllUI(); });
+  UI.musicToggle.addEventListener('change', () => {
+    save.settings.music = UI.musicToggle.checked;
+    persist();
+    if (save.settings.music && game.running && !game.paused) audio.startMusic(); else audio.stopMusic();
+  });
+  UI.sfxToggle.addEventListener('change', () => { save.settings.sfx = UI.sfxToggle.checked; persist(); });
+  document.getElementById('resetDataBtn').addEventListener('click', () => {
+    if (confirm('Reset all local game data?')) {
+      localStorage.removeItem(currentSaveKey());
+      save = defaultSave();
+      if (currentUser && accounts[currentUser]) save.playerName = accounts[currentUser].playerName || save.playerName;
+      persist();
+      updateAllUI();
+      toast('Local data reset.');
+    }
+  });
+
+  function selectedPaymentType() {
+    const el = document.getElementById('paymentTypeSelect');
+    const type = Number(el?.value || 8004);
+    return paymentMethods.some(method => method.type === type) ? type : 8004;
+  }
+
+  function paymentReturnUrl(status, packId, orderId) {
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('payment', status);
+      url.searchParams.set('pack', packId);
+      url.searchParams.set('orderId', orderId);
+      return url.toString();
+    } catch (err) {
+      console.warn('Payment return URL fallback used.', err);
+      return status === 'success' ? 'https://www.roomilo.com' : 'https://www.roomilo.com';
+    }
+  }
+
+  function grantCoinPack(pack, orderId = '') {
+    if (!pack) return;
+    const grantedOrders = save.grantedPaymentOrders || [];
+    if (orderId && grantedOrders.includes(orderId)) return;
+    save.coins += pack.coins;
+    if (orderId) save.grantedPaymentOrders = [...grantedOrders, orderId].slice(-20);
+    persist();
+    updateAllUI();
+    audio.play('coin');
+    toast(`${pack.name} added ${pack.coins} Coins.`);
+  }
+
+  function handlePaymentReturn() {
+    let params;
+    try { params = new URLSearchParams(window.location.search); } catch (err) { return; }
+    const status = params.get('payment');
+    const packId = params.get('pack');
+    const orderId = params.get('orderId');
+    if (!status || !packId) return;
+    const pendingRaw = localStorage.getItem(PAYMENT_PENDING_KEY);
+    let pending = null;
+    try { pending = pendingRaw ? JSON.parse(pendingRaw) : null; } catch (err) { pending = null; }
+    const pack = coinPacks.find(p => p.id === packId);
+    if (status === 'success' && pack && pending && pending.orderId === orderId && pending.packId === packId) {
+      grantCoinPack(pack, orderId);
+      localStorage.removeItem(PAYMENT_PENDING_KEY);
+    } else if (status === 'failed') {
+      toast('Payment was not completed. No coins were added.');
+      localStorage.removeItem(PAYMENT_PENDING_KEY);
+    }
+    if (window.history && window.history.replaceState) {
+      try {
+        const cleanUrl = new URL(window.location.href);
+        ['payment', 'pack', 'orderId'].forEach(key => cleanUrl.searchParams.delete(key));
+        window.history.replaceState({}, document.title, cleanUrl.toString());
+      } catch (err) {
+        console.warn('Could not clean payment query params.', err);
+      }
+    }
+  }
+
+  function buyPack(id) {
+    const pack = coinPacks.find(p => p.id === id);
+    if (!pack) return;
+    syncName();
+    const payType = selectedPaymentType();
+    const orderId = `MRA_${pack.id}_${Date.now()}`;
+    const nameParts = String(save.playerName || 'Player').trim().split(/\s+/);
+    const firstName = nameParts[0] || 'Player';
+    const lastName = nameParts.slice(1).join(' ') || 'Guest';
+    const email = currentUser || normalizeEmail(UI.authEmailInput?.value) || 'guest@molerush.local';
+    const options = {
+      orderId,
+      amount: pack.amount,
+      currency: 'USD',
+      payTypes: payType,
+      name: pack.name,
+      email,
+      firstName,
+      lastName,
+      phone: '0000000000',
+      successUrl: paymentReturnUrl('success', pack.id, orderId),
+      backUrl: paymentReturnUrl('failed', pack.id, orderId)
+    };
+    localStorage.setItem(PAYMENT_PENDING_KEY, JSON.stringify({ orderId, packId: pack.id, amount: pack.amount, coins: pack.coins, payType, createdAt: Date.now(), saveKey: currentSaveKey() }));
+    audio.play('click');
+    if (typeof window.DoRequest === 'function') {
+      try {
+        window.DoRequest(options);
+        toast(`Opening ${paymentMethods.find(m => m.type === payType)?.label || 'payment'} checkout...`);
+      } catch (err) {
+        console.error('Payment request failed.', err);
+        toast('Payment service is not available. Please try again later.');
+      }
+    } else {
+      console.warn('DoRequest is not available. Check PayApi-v2.js loading.');
+      toast('Payment service is not available. Please try again later.');
+    }
+  }
+
+  function buyItem(id) {
+    const item = itemDefs[id];
+    if (!item) return;
+    if (save.coins < item.cost) return toast('Not enough coins.');
+    save.coins -= item.cost;
+    save.ownedItems[id] = (save.ownedItems[id] || 0) + 1;
+    persist();
+    updateAllUI();
+    audio.play('item');
+    toast(`${item.name} purchased.`);
+  }
+
+  function skinAction(id) {
+    const skin = skins.find(s => s.id === id);
+    if (!skin) return;
+    const owned = save.ownedSkins.includes(id);
+    if (!owned) {
+      if (save.coins < skin.cost) return toast('Not enough coins.');
+      save.coins -= skin.cost;
+      save.ownedSkins.push(id);
+      save.equippedSkin = id;
+      toast(`${skin.name} unlocked and equipped.`);
+    } else {
+      save.equippedSkin = id;
+      toast(`${skin.name} equipped.`);
+    }
+    persist();
+    updateAllUI();
+  }
+
+  function getPointerPos(evt) {
+    const rect = canvas.getBoundingClientRect();
+    const t = evt.touches && evt.touches[0] ? evt.touches[0] : evt.changedTouches && evt.changedTouches[0] ? evt.changedTouches[0] : evt;
+    return { x: t.clientX - rect.left, y: t.clientY - rect.top };
+  }
+
+  function syncHammerToPointer(pos) {
+    pointer.x = pos.x;
+    pointer.y = pos.y;
+    pointer.active = true;
+    pointer.lastMove = performance.now();
+    if (game.running && !game.paused && !game.finished) {
+      game.hammer.x = clamp(pos.x, 16, game.w - 16);
+      game.hammer.y = clamp(pos.y, 70, game.h - 42);
+    }
+  }
+
+  canvas.addEventListener('pointermove', evt => {
+    evt.preventDefault();
+    syncHammerToPointer(getPointerPos(evt));
+  }, { passive: false });
+  canvas.addEventListener('pointerenter', evt => {
+    syncHammerToPointer(getPointerPos(evt));
+  }, { passive: false });
+  canvas.addEventListener('pointerdown', evt => {
+    evt.preventDefault();
+    const pos = getPointerPos(evt);
+    syncHammerToPointer(pos);
+    pointer.down = true;
+    if (game.running && !game.paused) game.whack(pos.x, pos.y);
+  }, { passive: false });
+  window.addEventListener('pointerup', () => { pointer.down = false; }, { passive: true });
+
+  document.querySelectorAll('[data-move]').forEach(btn => {
+    const keyMap = { up: 'arrowup', down: 'arrowdown', left: 'arrowleft', right: 'arrowright' };
+    const start = evt => { evt.preventDefault(); keyState.add(keyMap[btn.dataset.move]); };
+    const end = evt => { evt.preventDefault(); keyState.delete(keyMap[btn.dataset.move]); };
+    btn.addEventListener('pointerdown', start, { passive: false });
+    btn.addEventListener('pointerup', end, { passive: false });
+    btn.addEventListener('pointerleave', end, { passive: false });
+    btn.addEventListener('pointercancel', end, { passive: false });
+  });
+
+  window.addEventListener('keydown', evt => {
+    const key = evt.key.toLowerCase();
+    if (['arrowleft', 'arrowright', 'arrowup', 'arrowdown', ' ', 'spacebar'].includes(key) || ['w','a','s','d','p','r'].includes(key)) evt.preventDefault();
+    if (key === ' ') keyState.add('space'); else keyState.add(key);
+    if (key === ' ' || key === 'spacebar') game.whack();
+    if (key === 'p') game.paused ? game.resume() : game.pause();
+    if (key === 'r' && document.getElementById('gameScreen').classList.contains('active')) game.start(game.mode, game.level);
+  });
+  window.addEventListener('keyup', evt => {
+    const key = evt.key.toLowerCase();
+    if (key === ' ') keyState.delete('space'); else keyState.delete(key);
+  });
+  window.addEventListener('resize', () => game.resize());
+  window.addEventListener('orientationchange', () => setTimeout(() => game.resize(), 120));
+  // Keep right-click enabled so developers can inspect the page on GitHub Pages builds.
+
+  // First boot
+  handlePaymentReturn();
+  claimDailyReward();
+  updateAllUI();
+  showScreen('startScreen');
+  game.resize();
+})();
