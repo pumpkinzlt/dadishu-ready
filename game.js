@@ -68,6 +68,10 @@
     return String(email || '').trim().toLowerCase();
   }
 
+  function isValidEmail(email) {
+    return /^\S+@\S+\.\S+$/.test(normalizeEmail(email));
+  }
+
   function shortHash(str) {
     let hash = 5381;
     for (let i = 0; i < str.length; i++) hash = ((hash << 5) + hash) ^ str.charCodeAt(i);
@@ -168,6 +172,9 @@
       this.ctx = null;
       this.musicTimer = null;
       this.musicOn = false;
+      this.musicStep = 0;
+      this.musicMode = 'classic';
+      this.master = null;
     }
     ensure() {
       try {
@@ -175,6 +182,9 @@
           const AudioCtx = window.AudioContext || window.webkitAudioContext;
           if (!AudioCtx) return null;
           this.ctx = new AudioCtx();
+          this.master = this.ctx.createGain();
+          this.master.gain.value = 0.82;
+          this.master.connect(this.ctx.destination);
         }
         if (this.ctx.state === 'suspended') this.ctx.resume().catch?.(() => {});
         return this.ctx;
@@ -183,67 +193,117 @@
         return null;
       }
     }
-    tone(freq, duration = 0.12, type = 'sine', gain = 0.06, slide = 0) {
-      if (!save.settings.sfx) return;
+    destination() {
+      return this.master || this.ensure()?.destination;
+    }
+    tone(freq, duration = 0.12, type = 'sine', gain = 0.06, slide = 0, when = 0, isMusic = false) {
+      if (isMusic ? !save.settings.music : !save.settings.sfx) return;
       const ctx = this.ensure();
       if (!ctx) return;
-      const now = ctx.currentTime;
+      const now = ctx.currentTime + Math.max(0, when);
       const osc = ctx.createOscillator();
       const amp = ctx.createGain();
       osc.type = type;
-      osc.frequency.setValueAtTime(freq, now);
+      osc.frequency.setValueAtTime(Math.max(35, freq), now);
       if (slide) osc.frequency.exponentialRampToValueAtTime(Math.max(35, freq + slide), now + duration);
       amp.gain.setValueAtTime(0.0001, now);
-      amp.gain.exponentialRampToValueAtTime(gain, now + 0.015);
+      amp.gain.exponentialRampToValueAtTime(gain, now + 0.014);
       amp.gain.exponentialRampToValueAtTime(0.0001, now + duration);
-      osc.connect(amp).connect(ctx.destination);
+      osc.connect(amp).connect(this.destination());
       osc.start(now);
-      osc.stop(now + duration + 0.02);
+      osc.stop(now + duration + 0.035);
+    }
+    noise(duration = 0.12, gain = 0.035, filterFreq = 900, when = 0, isMusic = false) {
+      if (isMusic ? !save.settings.music : !save.settings.sfx) return;
+      const ctx = this.ensure();
+      if (!ctx) return;
+      const now = ctx.currentTime + Math.max(0, when);
+      const bufferSize = Math.max(1, Math.floor(ctx.sampleRate * duration));
+      const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+      const src = ctx.createBufferSource();
+      const filter = ctx.createBiquadFilter();
+      const amp = ctx.createGain();
+      src.buffer = buffer;
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(filterFreq, now);
+      filter.Q.setValueAtTime(1.8, now);
+      amp.gain.setValueAtTime(gain, now);
+      amp.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+      src.connect(filter).connect(amp).connect(this.destination());
+      src.start(now);
+      src.stop(now + duration + 0.02);
+    }
+    chord(notes, duration = 0.18, type = 'triangle', gain = 0.028, isMusic = false) {
+      notes.forEach((n, i) => this.tone(n, duration, type, gain / Math.max(1, notes.length), 0, i * 0.012, isMusic));
     }
     play(name) {
       try {
         const map = {
-        click: () => this.tone(520, 0.07, 'triangle', 0.035),
-        score: () => { this.tone(720, 0.07, 'square', 0.035); setTimeout(() => this.tone(960, 0.08, 'triangle', 0.032), 55); },
-        coin: () => { this.tone(980, 0.08, 'triangle', 0.04); setTimeout(() => this.tone(1320, 0.08, 'sine', 0.03), 50); },
-        item: () => { this.tone(380, 0.11, 'sawtooth', 0.035); setTimeout(() => this.tone(620, 0.12, 'triangle', 0.035), 80); },
-        hurt: () => this.tone(160, 0.2, 'sawtooth', 0.055, -80),
-        over: () => { this.tone(260, 0.18, 'triangle', 0.055, -70); setTimeout(() => this.tone(150, 0.25, 'sawtooth', 0.045, -50), 150); }
+          click: () => this.tone(620, 0.055, 'triangle', 0.032, 90),
+          back: () => this.tone(360, 0.08, 'triangle', 0.026, -60),
+          locked: () => { this.tone(180, 0.09, 'square', 0.032, -25); this.noise(0.06, 0.012, 300, 0.02); },
+          start: () => { this.tone(392, 0.08, 'triangle', 0.04); this.tone(523, 0.08, 'triangle', 0.036, 0, 0.055); this.tone(784, 0.11, 'sine', 0.032, 0, 0.11); },
+          pause: () => { this.tone(480, 0.06, 'triangle', 0.028); this.tone(320, 0.08, 'triangle', 0.024, 0, 0.07); },
+          resume: () => { this.tone(320, 0.06, 'triangle', 0.026); this.tone(480, 0.08, 'triangle', 0.028, 0, 0.07); },
+          pop: () => { this.tone(250 + Math.random() * 80, 0.055, 'sine', 0.012, 120); },
+          whack: () => { this.noise(0.08, 0.034, 680); this.tone(130, 0.07, 'square', 0.026, -45, 0.01); },
+          miss: () => { this.noise(0.11, 0.028, 260); this.tone(150, 0.13, 'sawtooth', 0.032, -45); },
+          score: () => { this.tone(720, 0.055, 'square', 0.033); this.tone(960, 0.06, 'triangle', 0.03, 0, 0.052); },
+          combo: () => { this.tone(820, 0.05, 'square', 0.032); this.tone(1060, 0.055, 'triangle', 0.03, 0, 0.045); this.tone(1320, 0.07, 'sine', 0.028, 0, 0.09); },
+          coin: () => { this.tone(980, 0.055, 'triangle', 0.038); this.tone(1320, 0.06, 'sine', 0.03, 0, 0.05); this.tone(1568, 0.065, 'sine', 0.023, 0, 0.1); },
+          item: () => { this.tone(380, 0.09, 'sawtooth', 0.032, 40); this.tone(620, 0.11, 'triangle', 0.034, 0, 0.08); },
+          shield: () => { this.chord([392, 523, 659], 0.18, 'triangle', 0.065); this.tone(784, 0.12, 'sine', 0.026, 0, 0.12); },
+          bomb: () => { this.tone(95, 0.22, 'sawtooth', 0.055, -35); this.noise(0.22, 0.045, 180, 0.01); },
+          revive: () => { this.chord([330, 440, 660], 0.18, 'triangle', 0.06); this.tone(880, 0.12, 'sine', 0.03, 0, 0.15); },
+          hurt: () => { this.noise(0.08, 0.026, 220); this.tone(160, 0.18, 'sawtooth', 0.048, -80); },
+          over: () => { this.tone(260, 0.16, 'triangle', 0.05, -70); this.tone(190, 0.2, 'sawtooth', 0.04, -45, 0.14); this.tone(130, 0.24, 'triangle', 0.036, -35, 0.32); },
+          purchase: () => { this.tone(660, 0.06, 'triangle', 0.038); this.tone(880, 0.07, 'triangle', 0.036, 0, 0.06); this.tone(1180, 0.09, 'sine', 0.031, 0, 0.13); },
+          equip: () => { this.tone(460, 0.07, 'triangle', 0.032); this.chord([690, 920], 0.12, 'sine', 0.042); },
+          login: () => { this.chord([392, 494, 659], 0.16, 'triangle', 0.058); },
+          payment: () => { this.tone(520, 0.08, 'triangle', 0.034); this.tone(740, 0.08, 'triangle', 0.032, 0, 0.08); }
         };
         map[name]?.();
       } catch (err) {
         console.warn('Sound effect failed safely.', err);
       }
     }
-    startMusic() {
-      if (!save.settings.music || this.musicOn) return;
+    startMusic(mode = 'classic') {
+      if (!save.settings.music) return;
+      if (this.musicOn && this.musicMode === mode) return;
+      if (this.musicOn) this.stopMusic();
       const ctx = this.ensure();
       if (!ctx) return;
       this.musicOn = true;
-      const notes = [196, 247, 294, 330, 294, 247, 220, 247];
-      let step = 0;
+      this.musicMode = mode || 'classic';
+      this.musicStep = 0;
+      const tracks = {
+        beginner: { tempo: 560, melody: [392, 440, 494, 523, 494, 440, 392, 330], bass: [196, 196, 220, 247], wave: 'triangle', perc: 0.18 },
+        classic: { tempo: 430, melody: [392, 494, 587, 659, 587, 494, 440, 494], bass: [196, 247, 220, 247], wave: 'triangle', perc: 0.25 },
+        arena: { tempo: 320, melody: [330, 392, 494, 659, 740, 659, 494, 392], bass: [110, 130, 146, 165], wave: 'square', perc: 0.48 },
+        level: { tempo: 470, melody: [349, 440, 523, 587, 659, 587, 523, 440], bass: [174, 220, 196, 247], wave: 'triangle', perc: 0.28 }
+      };
       const playStep = () => {
         if (!this.musicOn || !save.settings.music) return;
-        const now = ctx.currentTime;
-        const osc = ctx.createOscillator();
-        const amp = ctx.createGain();
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(notes[step % notes.length], now);
-        amp.gain.setValueAtTime(0.0001, now);
-        amp.gain.exponentialRampToValueAtTime(0.026, now + 0.04);
-        amp.gain.exponentialRampToValueAtTime(0.0001, now + 0.42);
-        osc.connect(amp).connect(ctx.destination);
-        osc.start(now);
-        osc.stop(now + 0.48);
-        step++;
+        const track = tracks[this.musicMode] || tracks.classic;
+        const i = this.musicStep;
+        if (i % 2 === 0) this.tone(track.melody[i % track.melody.length], track.tempo / 1200, track.wave, this.musicMode === 'arena' ? 0.018 : 0.016, 0, 0, true);
+        if (i % 4 === 0) this.tone(track.bass[Math.floor(i / 4) % track.bass.length], track.tempo / 900, 'sine', 0.014, 0, 0, true);
+        if (i % 4 === 2) this.tone(track.bass[(Math.floor(i / 4) + 1) % track.bass.length] * 1.5, track.tempo / 1500, 'triangle', 0.009, 0, 0, true);
+        if (track.perc > 0 && i % (this.musicMode === 'arena' ? 2 : 4) === 0) this.noise(0.035, 0.006 + track.perc * 0.01, 1200, 0, true);
+        if (i % 16 === 15) this.chord([track.melody[1], track.melody[3], track.melody[5]], 0.18, 'triangle', 0.026, true);
+        this.musicStep += 1;
       };
       playStep();
-      this.musicTimer = setInterval(playStep, 480);
+      const track = tracks[this.musicMode] || tracks.classic;
+      this.musicTimer = setInterval(playStep, track.tempo / 2);
     }
     stopMusic() {
       this.musicOn = false;
       clearInterval(this.musicTimer);
       this.musicTimer = null;
+      this.musicStep = 0;
     }
   }
 
@@ -424,7 +484,8 @@
             ? 'Beginner Training: easy warm-up!'
             : 'Classic Mode: chase the best score!';
       this.floatText(intro, this.w / 2, Math.min(132, this.h * 0.2), theme.spark);
-      audio.startMusic();
+      audio.play('start');
+      audio.startMusic(this.mode);
       const token = this.activeLoopToken;
       requestAnimationFrame(now => this.loop(now, token));
     }
@@ -538,6 +599,7 @@
       const maxLife = this.mode === 'beginner' ? 1650 : this.mode === 'arena' ? 1260 : 1450;
       const life = clamp(baseLife / difficulty, minLife, maxLife) * (type === 'fast' ? 0.72 : 1) * (this.effects.speed > 0 ? 1.25 : 1);
       const mole = new Mole(hole, type, life, this);
+      audio.play('pop');
       hole.mole = mole;
       this.moles.push(mole);
     }
@@ -545,7 +607,7 @@
     whack(x = this.hammer.x, y = this.hammer.y, fromBomb = false) {
       if (!this.running || this.paused || this.finished) return;
       this.hammer.swing = 1;
-      audio.play('click');
+      audio.play('whack');
       this.ripples.push({ x, y, r: 0, a: 1, color: 'rgba(255,207,77,' });
       const hitRadius = fromBomb ? Infinity : clamp(this.w * 0.045, 38, 62);
       let hit = false;
@@ -577,7 +639,7 @@
       const coinGain = (coinBase + Math.floor(this.combo / 5)) * (this.effects.double > 0 ? 2 : 1);
       this.score += points;
       this.coinsEarned += coinGain;
-      audio.play(mole.type === 'gold' ? 'coin' : 'score');
+      audio.play(mole.type === 'gold' ? 'coin' : (this.combo >= 4 && this.combo % 4 === 0 ? 'combo' : 'score'));
       this.floatText(`+${points}`, mole.x, mole.y - 38, mole.type === 'gold' ? '#ffdf64' : '#ffffff');
       this.floatText(`+${coinGain} 🪙`, mole.x + 16, mole.y - 12, '#ffcf4d');
       this.spawnCoinBurst(mole.x, mole.y, coinGain);
@@ -589,7 +651,7 @@
         this.effects.shield = 0;
         this.floatText('Blocked!', x, y - 25, '#64ff9a');
         this.spark(x, y, '#64ff9a', 20);
-        audio.play('item');
+        audio.play('shield');
         return;
       }
       this.misses += 1;
@@ -597,7 +659,7 @@
       this.shake = 9;
       this.floatText(label, x, y - 18, '#ff5470');
       this.spark(x, y, '#ff5470', 12);
-      audio.play('hurt');
+      audio.play(label === 'Miss' || label === 'Escaped!' ? 'miss' : 'hurt');
     }
 
     useItem(id) {
@@ -610,10 +672,12 @@
       save.ownedItems[id] -= 1;
       this.cooldowns[id] = item.cooldown;
       if (id === 'bomb') {
+        audio.play('bomb');
         this.whack(this.w / 2, this.h / 2, true);
         this.ripples.push({ x: this.w / 2, y: this.h / 2, r: 10, a: 1, color: 'rgba(255,84,112,' });
         this.shake = 12;
       } else if (id === 'revive') {
+        audio.play('revive');
         this.effects.revived = false;
         this.floatText('Revive Ready', this.hammer.x, this.hammer.y - 40, '#ff94a6');
       } else {
@@ -623,7 +687,7 @@
       persist();
       updateAllUI();
       this.updateItemButtons();
-      audio.play('item');
+      if (!['bomb', 'revive'].includes(id)) audio.play(id === 'shield' ? 'shield' : 'item');
     }
 
     canRevive() {
@@ -639,7 +703,7 @@
       this.floatText('Revived!', this.w / 2, this.h / 2 - 80, '#ff94a6');
       this.spark(this.w / 2, this.h / 2, '#ff94a6', 42);
       this.shake = 0;
-      audio.play('item');
+      audio.play('revive');
       updateAllUI();
     }
 
@@ -650,6 +714,7 @@
       pointer.active = false;
       document.getElementById('gameScreen').classList.add('menu-cursor');
       UI.pauseOverlay.classList.remove('hidden');
+      audio.play('pause');
       audio.stopMusic();
     }
 
@@ -659,7 +724,8 @@
       this.last = performance.now();
       document.getElementById('gameScreen').classList.remove('menu-cursor');
       UI.pauseOverlay.classList.add('hidden');
-      audio.startMusic();
+      audio.play('resume');
+      audio.startMusic(this.mode);
     }
 
     endGame() {
@@ -1154,6 +1220,7 @@
     if (isLoggedIn() || mode === 'beginner') return true;
     const message = 'Register or log in to unlock Classic, Arena, and Level modes.';
     setAuthMessage(message, 'error');
+    audio.play('locked');
     toast(message);
     return false;
   }
@@ -1362,6 +1429,7 @@
       save.dailyReward = { claimed: true, amount: 20 };
       save.coins += 20;
       persist();
+      audio.play('coin');
       toast('Daily reward: +20 Coins!');
     }
   }
@@ -1375,7 +1443,7 @@
   }
 
   function validateAuthInput(email, password) {
-    if (!/^\S+@\S+\.\S+$/.test(email)) {
+    if (!isValidEmail(email)) {
       setAuthMessage('Please enter a valid email address.', 'error');
       toast('Enter a valid email address.');
       return false;
@@ -1416,6 +1484,7 @@
     UI.authPasswordInput.value = '';
     switchAccount(email);
     setAuthMessage('Account registered. You are now signed in.', 'success');
+    audio.play('login');
     toast('Account registered. Your progress is now saved to this login.');
   }
 
@@ -1432,6 +1501,7 @@
     UI.authPasswordInput.value = '';
     switchAccount(email);
     setAuthMessage('Logged in successfully.', 'success');
+    audio.play('login');
     toast('Logged in successfully.');
   }
 
@@ -1441,6 +1511,7 @@
     game.level = 1;
     switchAccount('');
     setAuthMessage('Logged out. Beginner Mode is active now.', 'info');
+    audio.play('back');
     toast('Logged out. Beginner Mode is active now.');
   }
 
@@ -1562,14 +1633,15 @@
 
   function paymentReturnUrl(status, packId, orderId) {
     try {
-      const url = new URL(window.location.href);
+      const base = `${window.location.origin}${window.location.pathname}`;
+      const url = new URL(base);
       url.searchParams.set('payment', status);
       url.searchParams.set('pack', packId);
       url.searchParams.set('orderId', orderId);
       return url.toString();
     } catch (err) {
       console.warn('Payment return URL fallback used.', err);
-      return status === 'success' ? 'https://www.roomilo.com' : 'https://www.roomilo.com';
+      return status === 'success' ? 'https://www.test.com' : 'https://www.failed.com';
     }
   }
 
@@ -1599,7 +1671,11 @@
     if (status === 'success' && pack && pending && pending.orderId === orderId && pending.packId === packId) {
       grantCoinPack(pack, orderId);
       localStorage.removeItem(PAYMENT_PENDING_KEY);
+    } else if (status === 'success' && pack) {
+      console.warn('Payment success return ignored because no matching pending order was found.', { orderId, packId, pending });
+      toast('Payment returned, but no matching pending order was found. Please contact support.');
     } else if (status === 'failed') {
+      audio.play('miss');
       toast('Payment was not completed. No coins were added.');
       localStorage.removeItem(PAYMENT_PENDING_KEY);
     }
@@ -1614,44 +1690,98 @@
     }
   }
 
+  function makePaymentOrderId(packId) {
+    const suffix = Math.random().toString(36).slice(2, 8).toUpperCase();
+    return `MRA${Date.now()}${suffix}`.replace(/[^A-Z0-9]/gi, '').slice(0, 32);
+  }
+
+  function paymentScriptReady() {
+    return typeof window.DoRequest === 'function' && typeof window.CryptoJS !== 'undefined';
+  }
+
+  function showPaymentScriptError() {
+    console.warn('Payment script status:', {
+      hasDoRequest: typeof window.DoRequest === 'function',
+      hasCryptoJS: typeof window.CryptoJS !== 'undefined'
+    });
+    toast('Payment service is not ready. Refresh the page and try again.');
+  }
+
   function buyPack(id) {
     const pack = coinPacks.find(p => p.id === id);
     if (!pack) return;
     syncName();
+
+    if (!isLoggedIn()) {
+      setAuthMessage('Please register or log in before buying coin packs.', 'error');
+      toast('Please register or log in before buying coin packs.');
+      showScreen('startScreen');
+      return;
+    }
+
+    const email = normalizeEmail(currentUser);
+    if (!isValidEmail(email)) {
+      setAuthMessage('Your account email is invalid. Please log in again.', 'error');
+      toast('Please log in with a valid email before payment.');
+      showScreen('startScreen');
+      return;
+    }
+
+    if (!paymentScriptReady()) {
+      showPaymentScriptError();
+      return;
+    }
+
     const payType = selectedPaymentType();
-    const orderId = `MRA_${pack.id}_${Date.now()}`;
+    const orderId = makePaymentOrderId(pack.id);
     const nameParts = String(save.playerName || 'Player').trim().split(/\s+/);
     const firstName = nameParts[0] || 'Player';
     const lastName = nameParts.slice(1).join(' ') || 'Guest';
-    const email = currentUser || normalizeEmail(UI.authEmailInput?.value) || 'guest@molerush.local';
     const options = {
       orderId,
-      amount: pack.amount,
+      amount: Number(pack.amount.toFixed(2)),
       currency: 'USD',
       payTypes: payType,
       name: pack.name,
       email,
       firstName,
       lastName,
-      phone: '0000000000',
+      phone: '13500000000',
       successUrl: paymentReturnUrl('success', pack.id, orderId),
       backUrl: paymentReturnUrl('failed', pack.id, orderId)
     };
-    localStorage.setItem(PAYMENT_PENDING_KEY, JSON.stringify({ orderId, packId: pack.id, amount: pack.amount, coins: pack.coins, payType, createdAt: Date.now(), saveKey: currentSaveKey() }));
-    audio.play('click');
-    if (typeof window.DoRequest === 'function') {
-      try {
-        window.DoRequest(options);
-        toast(`Opening ${paymentMethods.find(m => m.type === payType)?.label || 'payment'} checkout...`);
-      } catch (err) {
-        console.error('Payment request failed.', err);
-        toast('Payment service is not available. Please try again later.');
-      }
-    } else {
-      console.warn('DoRequest is not available. Check PayApi-v2.js loading.');
+
+    localStorage.setItem(PAYMENT_PENDING_KEY, JSON.stringify({
+      orderId,
+      packId: pack.id,
+      amount: pack.amount,
+      coins: pack.coins,
+      payType,
+      createdAt: Date.now(),
+      saveKey: currentSaveKey(),
+      email
+    }));
+
+    audio.play('payment');
+    try {
+      const result = window.DoRequest(options);
+      console.info('Payment request sent:', options, result);
+      toast(`Opening ${paymentMethods.find(m => m.type === payType)?.label || 'payment'} checkout...`);
+    } catch (err) {
+      console.error('Payment request failed.', err);
+      localStorage.removeItem(PAYMENT_PENDING_KEY);
       toast('Payment service is not available. Please try again later.');
     }
   }
+
+  window.MoleRushPayDebug = () => ({
+    hasDoRequest: typeof window.DoRequest === 'function',
+    hasCryptoJS: typeof window.CryptoJS !== 'undefined',
+    currentUser,
+    paymentType: selectedPaymentType(),
+    pendingPayment: localStorage.getItem(PAYMENT_PENDING_KEY),
+    url: window.location.href
+  });
 
   function buyItem(id) {
     const item = itemDefs[id];
@@ -1661,7 +1791,7 @@
     save.ownedItems[id] = (save.ownedItems[id] || 0) + 1;
     persist();
     updateAllUI();
-    audio.play('item');
+    audio.play('purchase');
     toast(`${item.name} purchased.`);
   }
 
@@ -1674,9 +1804,11 @@
       save.coins -= skin.cost;
       save.ownedSkins.push(id);
       save.equippedSkin = id;
+      audio.play('purchase');
       toast(`${skin.name} unlocked and equipped.`);
     } else {
       save.equippedSkin = id;
+      audio.play('equip');
       toast(`${skin.name} equipped.`);
     }
     persist();

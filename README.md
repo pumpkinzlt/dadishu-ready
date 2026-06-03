@@ -30,6 +30,11 @@ README.md
 - Right-click inspection remains enabled.
 - Coin packs now call the connected checkout script through `DoRequest(options)`.
 
+- Added richer WebAudio background music and arcade sound effects:
+  - Different music pacing for Beginner, Classic, Arena, and Level modes.
+  - Button, login, start, pause/resume, whack, mole pop, hit, combo, coin, item, bomb, shield, revive, purchase, payment, miss, hurt, and game-over sounds.
+  - Music and sound effects still respect the Settings toggles.
+
 ## Features
 
 - HTML5 Canvas gameplay
@@ -47,7 +52,7 @@ README.md
 - Supported checkout payTypes: `8004` Credit Card, `8003` Apple Pay, `8012` Google Pay
 - Keyboard controls: WASD / Arrow Keys / Space / P / R
 - Mobile controls: touch, virtual D-pad, WHACK button
-- Sound effects and background music toggles
+- Enhanced WebAudio sound effects and mode-specific background music toggles
 
 ## Important Note
 
