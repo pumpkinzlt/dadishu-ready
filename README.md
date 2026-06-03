@@ -62,3 +62,9 @@ This project uses browser `localStorage` only. It is suitable for a static GitHu
 ## Payment Flow
 
 Coin pack buttons build an `options` object and call `DoRequest(options)`. The game stores a pending payment order before redirecting. If the checkout returns to the page with `payment=success`, the matching coin pack is credited once. If it returns with `payment=failed`, no coins are added.
+
+## V12 Interaction Update
+- Default menu buttons are now transparent/outlined.
+- A clicked/selected button gets a clear cyan background.
+- Shop tabs and selected mode buttons keep a selected background.
+- The update preserves auth, beginner mode locking, payment script integration, audio, localStorage, and mobile controls.

@@ -1531,7 +1531,7 @@
     const btn = e.target.closest('button');
     if (btn && !btn.disabled) {
       btn.classList.add('clicked');
-      setTimeout(() => btn.classList.remove('clicked'), 130);
+      setTimeout(() => btn.classList.remove('clicked'), 260);
       audio.play('click');
     }
     const screenTarget = e.target.closest('[data-screen]');
