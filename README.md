@@ -63,8 +63,16 @@ This project uses browser `localStorage` only. It is suitable for a static GitHu
 
 Coin pack buttons build an `options` object and call `DoRequest(options)`. The game stores a pending payment order before redirecting. If the checkout returns to the page with `payment=success`, the matching coin pack is credited once. If it returns with `payment=failed`, no coins are added.
 
-## V12 Interaction Update
-- Default menu buttons are now transparent/outlined.
-- A clicked/selected button gets a clear cyan background.
-- Shop tabs and selected mode buttons keep a selected background.
-- The update preserves auth, beginner mode locking, payment script integration, audio, localStorage, and mobile controls.
+
+## V13 Button Interaction Fix
+- Clicked UI buttons now keep the blue selected background instead of flashing and disappearing.
+- Other buttons in the same group return to transparent background.
+- D-pad, WHACK, and item buttons keep gameplay-specific press behavior and do not get stuck selected.
+
+
+## V14 Button Selection Logic Update
+- Home screen now opens with a clear default selected action: Beginner Mode / Start Game.
+- Login form opens with Log In selected by default.
+- Mode Select defaults to Classic only after login; locked guest modes do not show a fake selected state.
+- Shop opens with Coin Packs selected by default, and tabs keep one selected state at a time.
+- Button selection is now group-based so unrelated buttons do not keep incorrect backgrounds.

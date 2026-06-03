@@ -1391,6 +1391,7 @@
       btn.classList.toggle('ghost', locked);
       btn.title = locked ? 'Register or log in to unlock this mode.' : '';
     });
+    syncModeVisualSelection();
   }
 
   function updateAllUI() {
@@ -1401,6 +1402,7 @@
     updateSettings();
     updateLevels();
     updateModeAccess();
+    syncDefaultButtonStates();
     if (game.running) {
       updateHUD();
       game.updateItemButtons();
@@ -1516,7 +1518,105 @@
   }
 
 
+  function getActiveScreenId() {
+    return document.querySelector('.screen.active')?.id || 'startScreen';
+  }
+
+  function setGroupActive(groupSelector, activeEl) {
+    const group = document.querySelector(groupSelector);
+    if (!group) return;
+    group.querySelectorAll('.ui-active').forEach(el => el.classList.remove('ui-active'));
+    if (activeEl && !activeEl.disabled) activeEl.classList.add('ui-active');
+  }
+
+  function getButtonGroup(btn) {
+    if (!btn) return null;
+    return btn.closest('.auth-actions, .home-actions, .shop-tabs, .cards, .shop-list, .level-grid, .settings-card');
+  }
+
+  function shouldKeepButtonActive(btn) {
+    if (!btn || btn.disabled) return false;
+    if (btn.matches('[data-move], #mobileSkillBtn, .skill-btn, .item-btn, .hud-button, .icon-btn')) return false;
+    return btn.matches('.btn, .tab');
+  }
+
+  function setPersistentButtonActive(btn) {
+    if (!shouldKeepButtonActive(btn)) return;
+    const group = getButtonGroup(btn);
+    if (!group) return;
+    group.querySelectorAll('.ui-active').forEach(el => {
+      if (el !== btn && shouldKeepButtonActive(el)) el.classList.remove('ui-active');
+    });
+    btn.classList.add('ui-active');
+  }
+
+  function syncModeVisualSelection(forcedMode = null) {
+    const formalModes = ['classic', 'arena', 'level'];
+    let selectedMode = forcedMode || (formalModes.includes(game.mode) ? game.mode : 'classic');
+    if (!isLoggedIn()) selectedMode = null;
+
+    document.querySelectorAll('.mode-card').forEach(card => {
+      card.classList.toggle('selected', !!selectedMode && card.dataset.mode === selectedMode);
+    });
+    document.querySelectorAll('[data-mode-start]').forEach(btn => {
+      const active = !!selectedMode && btn.dataset.modeStart === selectedMode && !btn.classList.contains('ghost');
+      btn.classList.toggle('ui-active', active);
+    });
+  }
+
+  function updatePersistentModeButton(mode) {
+    syncModeVisualSelection(mode);
+  }
+
+  function syncShopTabState() {
+    const activeTab = document.querySelector('.shop-tabs .tab.active') || document.querySelector('[data-shop-tab="coins"]');
+    document.querySelectorAll('.shop-tabs .tab').forEach(tab => {
+      tab.classList.toggle('ui-active', tab === activeTab);
+    });
+  }
+
+  function syncDefaultButtonStates() {
+    const screenId = getActiveScreenId();
+
+    // Login/Register has a clear default: Log In. Register stays highlighted only after the user chooses it.
+    if (!isLoggedIn() && UI.authForm && !UI.authForm.hidden) {
+      const authGroup = document.querySelector('.auth-actions');
+      if (authGroup && !authGroup.querySelector('.ui-active')) {
+        setGroupActive('.auth-actions', document.getElementById('loginBtn'));
+      }
+    } else {
+      setGroupActive('.auth-actions', null);
+    }
+
+    // The home screen always has a stable default action when opened.
+    if (screenId === 'startScreen') {
+      setGroupActive('.home-actions', UI.startGameBtn);
+    }
+
+    // Shop defaults to Coin Packs unless the user has selected another visible tab.
+    if (screenId === 'shopScreen') {
+      syncShopTabState();
+    }
+
+    // Mode Select defaults to Classic for signed-in users; guests see locked cards without a fake selection.
+    if (screenId === 'modeScreen') {
+      syncModeVisualSelection();
+    }
+  }
+
+  function clearHiddenPanelButtonState() {
+    syncDefaultButtonStates();
+  }
+
   document.addEventListener('click', e => {
+    const btn = e.target.closest('button');
+    if (btn && !btn.disabled) {
+      setPersistentButtonActive(btn);
+      btn.classList.add('clicked');
+      setTimeout(() => btn.classList.remove('clicked'), 160);
+      audio.play('click');
+    }
+
     const authBtn = e.target.closest('[data-auth]');
     if (authBtn) {
       e.preventDefault();
@@ -1524,20 +1624,14 @@
       if (action === 'register') registerAccount();
       if (action === 'login') loginAccount();
       if (action === 'logout') logoutAccount();
-      audio.play('click');
       return;
     }
 
-    const btn = e.target.closest('button');
-    if (btn && !btn.disabled) {
-      btn.classList.add('clicked');
-      setTimeout(() => btn.classList.remove('clicked'), 260);
-      audio.play('click');
-    }
     const screenTarget = e.target.closest('[data-screen]');
     if (screenTarget) {
       syncName();
       showScreen(screenTarget.dataset.screen);
+      clearHiddenPanelButtonState();
       if (screenTarget.dataset.screen === 'modeScreen' && !isLoggedIn()) {
         toast('Only Beginner Mode is available before login. Register or log in to unlock more modes.');
       }
@@ -1547,6 +1641,7 @@
       syncName();
       const startMode = getMainStartMode();
       showScreen('gameScreen');
+      clearHiddenPanelButtonState();
       game.start(startMode, startMode === 'level' ? (game.level || 1) : 1);
     }
     const modeStart = e.target.closest('[data-mode-start]');
@@ -1554,12 +1649,13 @@
       syncName();
       const mode = modeStart.dataset.modeStart;
       if (!requireLoginForMode(mode)) return;
-      document.querySelectorAll('.mode-card').forEach(card => card.classList.toggle('selected', card.dataset.mode === mode));
+      updatePersistentModeButton(mode);
       game.mode = mode;
       if (mode === 'level') {
         toast('Choose an unlocked level below.');
       } else {
         showScreen('gameScreen');
+        clearHiddenPanelButtonState();
         game.start(mode, 1);
       }
     }
@@ -1569,7 +1665,9 @@
       if (!requireLoginForMode('level')) return;
       const level = Number(levelTile.dataset.level) || 1;
       game.level = level;
+      updatePersistentModeButton('level');
       showScreen('gameScreen');
+      clearHiddenPanelButtonState();
       game.start('level', level);
     }
     const tab = e.target.closest('[data-shop-tab]');
@@ -1577,6 +1675,7 @@
       document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === tab));
       document.querySelectorAll('.shop-panel').forEach(panel => panel.classList.remove('active'));
       document.getElementById(`${tab.dataset.shopTab}Shop`).classList.add('active');
+      syncShopTabState();
     }
     const packBtn = e.target.closest('[data-buy-pack]');
     if (packBtn) buyPack(packBtn.dataset.buyPack);

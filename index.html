@@ -28,7 +28,7 @@
               <input id="authPasswordInput" type="password" maxlength="32" placeholder="Password" autocomplete="current-password" />
             </div>
             <div class="auth-actions no-guest-action">
-              <button id="loginBtn" type="button" class="btn small primary" data-auth="login">Log In</button>
+              <button id="loginBtn" type="button" class="btn small primary ui-active" data-auth="login">Log In</button>
               <button id="registerBtn" type="button" class="btn small" data-auth="register">Register</button>
             </div>
             <p id="authMessage" class="auth-message" role="status" aria-live="polite">Enter email and password, then choose Log In or Register.</p>
@@ -40,7 +40,7 @@
           <input id="playerNameInput" type="text" maxlength="16" placeholder="Enter nickname" autocomplete="off" />
         </label>
         <div class="home-actions">
-          <button type="button" id="startGameBtn" class="btn primary" data-action="start-game">Beginner Mode</button>
+          <button type="button" id="startGameBtn" class="btn primary ui-active" data-action="start-game">Beginner Mode</button>
           <button type="button" class="btn" data-screen="modeScreen">Mode Select</button>
           <button type="button" class="btn" data-screen="shopScreen">Shop</button>
           <button type="button" class="btn" data-screen="leaderboardScreen">Leaderboard</button>
@@ -60,7 +60,7 @@
         <h2>Choose Mode</h2>
       </div>
       <div class="cards three">
-        <article class="mode-card selected" data-mode="classic">
+        <article class="mode-card" data-mode="classic">
           <div class="mode-icon">🏆</div>
           <h3>Classic Mode</h3>
           <p><b>Login mode.</b> Balanced 60-second high-score run with normal, gold, fast, and bad moles.</p>
@@ -149,7 +149,7 @@
         <div class="wallet">🪙 <span id="shopCoins">0</span></div>
       </div>
       <div class="shop-tabs">
-        <button type="button" class="tab active" data-shop-tab="coins">Coin Packs</button>
+        <button type="button" class="tab active ui-active" data-shop-tab="coins">Coin Packs</button>
         <button type="button" class="tab" data-shop-tab="items">Items</button>
         <button type="button" class="tab" data-shop-tab="skins">Skins</button>
       </div>
