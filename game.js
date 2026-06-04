@@ -125,7 +125,7 @@
       ownedItems: { shield: 1, magnet: 1, double: 1, bomb: 1, speed: 1, revive: 1 },
       levelProgress: { unlocked: 1, stars: {} },
       leaderboard: defaultLeaderboard,
-      settings: { music: true, sfx: true },
+      settings: { music: true, sfx: true, accessibility: false, highContrast: false, reduceMotion: false },
       dailyReward: { claimed: false, amount: 20 },
       lastLoginDate: ''
     };
@@ -347,8 +347,33 @@
     leaderboardBody: document.getElementById('leaderboardBody'),
     musicToggle: document.getElementById('musicToggle'),
     sfxToggle: document.getElementById('sfxToggle'),
+    accessibilityToggle: document.getElementById('accessibilityToggle'),
+    contrastToggle: document.getElementById('contrastToggle'),
+    motionToggle: document.getElementById('motionToggle'),
     levelGrid: document.getElementById('levelGrid')
   };
+
+  function accessibilityOn() {
+    return !!save.settings.accessibility;
+  }
+
+  function highContrastOn() {
+    return !!(save.settings.highContrast || save.settings.accessibility);
+  }
+
+  function reduceMotionOn() {
+    return !!save.settings.reduceMotion;
+  }
+
+  function accessibilityMultiplier() {
+    return accessibilityOn() ? 1.28 : 1;
+  }
+
+  function applyAccessibilitySettings() {
+    document.body.classList.toggle('accessibility-mode', accessibilityOn());
+    document.body.classList.toggle('high-contrast-targets', highContrastOn());
+    document.body.classList.toggle('reduced-motion', reduceMotionOn());
+  }
 
   class MoleGame {
     constructor() {
@@ -470,6 +495,10 @@
         this.missLimit = 5;
         this.targetScore = 0;
       }
+      if (accessibilityOn()) {
+        this.timeLeft += this.mode === 'arena' ? 8 : 10;
+        this.missLimit += this.mode === 'beginner' ? 3 : 2;
+      }
       this.resize();
       this.hammer.x = this.w / 2;
       this.hammer.y = Math.min(this.h - 150, this.h * 0.65);
@@ -487,6 +516,7 @@
           : this.mode === 'beginner'
             ? 'Beginner Training: easy warm-up!'
             : 'Classic Mode: chase the best score!';
+      if (accessibilityOn()) this.floatText('Accessibility Assist On', this.w / 2, Math.min(166, this.h * 0.26), '#64ff9a');
       this.floatText(intro, this.w / 2, Math.min(132, this.h * 0.2), theme.spark);
       audio.play('start');
       audio.startMusic(this.mode);
@@ -508,7 +538,7 @@
       const sec = dt / 1000;
       this.timeLeft -= sec;
       this.spawnTimer -= dt;
-      this.shake = Math.max(0, this.shake - dt * 0.04);
+      this.shake = reduceMotionOn() ? 0 : Math.max(0, this.shake - dt * 0.04);
       Object.keys(this.effects).forEach(k => {
         if (typeof this.effects[k] === 'number') this.effects[k] = Math.max(0, this.effects[k] - dt);
       });
@@ -519,7 +549,8 @@
       if (this.mode === 'beginner') difficulty = 1 + Math.min(0.75, (this.score / 620) + ((elapsedBase - this.timeLeft) / 160));
       if (this.mode === 'arena') difficulty += 0.32;
       if (this.mode === 'level') difficulty += Math.min(0.45, this.level * 0.045);
-      const speedMod = this.effects.speed > 0 ? 0.72 : 1;
+      if (accessibilityOn()) difficulty *= 0.82;
+      const speedMod = (this.effects.speed > 0 ? 0.72 : 1) * (accessibilityOn() ? 0.86 : 1);
       if (this.mode === 'beginner') this.spawnInterval = clamp(1120 / difficulty, 520, 1120);
       else if (this.mode === 'arena') this.spawnInterval = clamp(760 / difficulty, 300, 760);
       else if (this.mode === 'level') this.spawnInterval = clamp((940 - this.level * 18) / difficulty, 330, 900);
@@ -528,7 +559,7 @@
         this.spawnMole(difficulty);
         if (this.mode === 'arena' && Math.random() > 0.48) this.spawnMole(difficulty);
         if (this.mode === 'level' && this.level >= 7 && Math.random() > 0.72) this.spawnMole(difficulty);
-        this.spawnTimer = this.spawnInterval * rand(0.75, 1.18);
+        this.spawnTimer = this.spawnInterval * rand(0.75, 1.18) * accessibilityMultiplier();
       }
       for (const mole of this.moles) mole.update(dt * speedMod);
       this.moles = this.moles.filter(mole => {
@@ -598,6 +629,10 @@
         else if (roll > 0.8 && this.score > 80) type = 'bad';
         else if (roll > 0.69 && this.score > 130) type = 'fast';
       }
+      if (accessibilityOn()) {
+        if (type === 'bad' && Math.random() < 0.78) type = 'normal';
+        if (type === 'fast' && Math.random() < 0.45) type = 'normal';
+      }
       if (this.effects.magnet > 0) {
         // Golden Bait should feel useful in a whack-a-mole game: more reward targets, fewer trap surprises.
         if (type === 'bad' && Math.random() < 0.65) type = 'normal';
@@ -606,7 +641,7 @@
       const baseLife = this.mode === 'beginner' ? rand(1150, 1650) : this.mode === 'arena' ? rand(760, 1150) : this.mode === 'level' ? rand(880, 1360) : rand(950, 1420);
       const minLife = this.mode === 'beginner' ? 690 : this.mode === 'arena' ? 430 : 520;
       const maxLife = this.mode === 'beginner' ? 1650 : this.mode === 'arena' ? 1260 : 1450;
-      const life = clamp(baseLife / difficulty, minLife, maxLife) * (type === 'fast' ? 0.72 : 1) * (this.effects.speed > 0 ? 1.25 : 1);
+      const life = clamp(baseLife / difficulty, minLife, maxLife) * (type === 'fast' ? 0.72 : 1) * (this.effects.speed > 0 ? 1.25 : 1) * (accessibilityOn() ? 1.34 : 1);
       const mole = new Mole(hole, type, life, this);
       audio.play('pop');
       hole.mole = mole;
@@ -618,7 +653,7 @@
       this.hammer.swing = 1;
       audio.play('whack');
       this.ripples.push({ x, y, r: 0, a: 1, color: 'rgba(255,207,77,' });
-      const hitRadius = fromBomb ? Infinity : clamp(this.w * 0.045, 38, 62);
+      const hitRadius = fromBomb ? Infinity : clamp(this.w * 0.045, 38, 62) * (accessibilityOn() ? 1.34 : 1);
       let hit = false;
       const visible = this.moles.filter(m => m.isHittable());
       visible.sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y));
@@ -673,7 +708,7 @@
       }
       this.misses += 1;
       this.combo = 0;
-      this.shake = 9;
+      this.shake = reduceMotionOn() ? 0 : (accessibilityOn() ? 4 : 9);
       this.floatText(label, x, y - 18, '#ff5470');
       this.spark(x, y, '#ff5470', 12);
       audio.play(label === 'Miss' || label === 'Escaped!' ? 'miss' : 'hurt');
@@ -693,7 +728,7 @@
         audio.play('bomb');
         this.whack(this.w / 2, this.h / 2, true);
         this.ripples.push({ x: this.w / 2, y: this.h / 2, r: 10, a: 1, color: 'rgba(255,84,112,' });
-        this.shake = 12;
+        this.shake = reduceMotionOn() ? 0 : (accessibilityOn() ? 6 : 12);
       } else if (id === 'revive') {
         audio.play('revive');
         this.effects.revived = false;
@@ -847,6 +882,7 @@
     }
 
     spark(x, y, color, count = 10) {
+      if (reduceMotionOn()) count = Math.min(4, Math.ceil(count * 0.25));
       for (let i = 0; i < count; i++) {
         const a = rand(0, Math.PI * 2);
         const s = rand(1.4, 6.3);
@@ -1003,7 +1039,8 @@
       const barW = clamp(this.w * 0.32, 190, 360);
       const x = this.w / 2 - barW / 2;
       const y = this.h < 560 ? 72 : 78;
-      const pct = clamp(this.timeLeft / (this.mode === 'arena' ? 75 : this.mode === 'level' ? (levels[this.level - 1] || levels[0]).time : 60), 0, 1);
+      const baseTime = this.mode === 'arena' ? 75 : this.mode === 'level' ? (levels[this.level - 1] || levels[0]).time : 60;
+      const pct = clamp(this.timeLeft / (baseTime + (accessibilityOn() ? (this.mode === 'arena' ? 8 : 10) : 0)), 0, 1);
       ctx.save();
       ctx.fillStyle = 'rgba(0,0,0,0.26)';
       roundRect(ctx, x, y, barW, 16, 8); ctx.fill();
@@ -1031,7 +1068,8 @@
           : this.mode === 'beginner'
             ? `Beginner • Easy pace • Time ${Math.ceil(this.timeLeft)}s • Misses ${this.misses}/${this.missLimit}`
             : `Classic • High Score • Time ${Math.ceil(this.timeLeft)}s • Misses ${this.misses}/${this.missLimit}`;
-      ctx.fillText(detail, this.w / 2, y - 5);
+      const assistSuffix = accessibilityOn() ? ' • Assist ON' : '';
+      ctx.fillText(detail + assistSuffix, this.w / 2, y - 5);
       const effectLabels = [];
       if (this.effects.shield > 0) effectLabels.push('Helmet');
       if (this.effects.magnet > 0) effectLabels.push('Golden Bait');
@@ -1173,6 +1211,26 @@
         ctx.fillText('$', 0, -r * 0.52);
       }
       // tears and bump on hit
+      if (highContrastOn() && this.phase !== 'hit') {
+        const labelMap = { gold: 'GOLD', bad: 'TRAP', fast: 'FAST', normal: 'HIT' };
+        const colorMap = { gold: '#ffe36b', bad: '#ff6f87', fast: '#77ffaf', normal: '#70f1ff' };
+        ctx.save();
+        ctx.globalAlpha = clamp(pop, 0, 1);
+        ctx.strokeStyle = colorMap[this.type] || '#70f1ff';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(0, r * 0.1, r * 0.76, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = colorMap[this.type] || '#70f1ff';
+        roundRect(ctx, -r * 0.42, r * 0.72, r * 0.84, r * 0.25, r * 0.09);
+        ctx.fill();
+        ctx.fillStyle = this.type === 'bad' ? '#19060b' : '#04131f';
+        ctx.font = `1000 ${Math.max(10, r * 0.16)}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(labelMap[this.type] || 'HIT', 0, r * 0.85);
+        ctx.restore();
+      }
       if (this.phase === 'hit') {
         ctx.fillStyle = '#74dcff';
         ctx.beginPath(); ctx.ellipse(-r * 0.31, r * 0.18 + this.hitTime * 0.02, r * 0.055, r * 0.12, 0.2, 0, Math.PI * 2); ctx.fill();
@@ -1423,6 +1481,10 @@
   function updateSettings() {
     UI.musicToggle.checked = !!save.settings.music;
     UI.sfxToggle.checked = !!save.settings.sfx;
+    if (UI.accessibilityToggle) UI.accessibilityToggle.checked = !!save.settings.accessibility;
+    if (UI.contrastToggle) UI.contrastToggle.checked = !!save.settings.highContrast;
+    if (UI.motionToggle) UI.motionToggle.checked = !!save.settings.reduceMotion;
+    applyAccessibilitySettings();
   }
 
   function updateLevels() {
@@ -1821,6 +1883,31 @@
     if (save.settings.music && game.running && !game.paused) audio.startMusic(); else audio.stopMusic();
   });
   UI.sfxToggle.addEventListener('change', () => { save.settings.sfx = UI.sfxToggle.checked; persist(); });
+  UI.accessibilityToggle?.addEventListener('change', () => {
+    save.settings.accessibility = UI.accessibilityToggle.checked;
+    persist();
+    applyAccessibilitySettings();
+    if (game.running) {
+      game.missLimit += save.settings.accessibility ? 2 : -2;
+      game.missLimit = Math.max(2, game.missLimit);
+      game.updateItemButtons();
+      updateHUD();
+    }
+    toast(save.settings.accessibility ? 'Accessibility Mode enabled.' : 'Accessibility Mode disabled.');
+  });
+  UI.contrastToggle?.addEventListener('change', () => {
+    save.settings.highContrast = UI.contrastToggle.checked;
+    persist();
+    applyAccessibilitySettings();
+    toast(save.settings.highContrast ? 'High Contrast Targets enabled.' : 'High Contrast Targets disabled.');
+  });
+  UI.motionToggle?.addEventListener('change', () => {
+    save.settings.reduceMotion = UI.motionToggle.checked;
+    persist();
+    applyAccessibilitySettings();
+    if (save.settings.reduceMotion) game.shake = 0;
+    toast(save.settings.reduceMotion ? 'Reduced Motion enabled.' : 'Reduced Motion disabled.');
+  });
   document.getElementById('resetDataBtn').addEventListener('click', () => {
     if (confirm('Reset all local game data?')) {
       localStorage.removeItem(currentSaveKey());

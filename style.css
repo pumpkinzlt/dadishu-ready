@@ -425,3 +425,37 @@ td { color: var(--text); }
   border-color: rgba(255,255,255,.44) !important;
   box-shadow: 0 14px 30px rgba(31,169,255,.28) !important;
 }
+
+/* V25 Accessibility Mode */
+.switch-row span small { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; line-height: 1.25; font-weight: 800; letter-spacing: 0; text-transform: none; }
+.accessibility-help { border-color: rgba(100,255,154,.18); background: rgba(100,255,154,.055); }
+body.accessibility-mode { --line: rgba(255,255,255,.2); }
+body.accessibility-mode .btn,
+body.accessibility-mode .tab,
+body.accessibility-mode .hud-button { min-height: 54px; font-size: 16px; }
+body.accessibility-mode .btn.small { min-height: 46px; font-size: 15px; }
+body.accessibility-mode .auth-fields input,
+body.accessibility-mode .name-box input { min-height: 48px; font-size: 16px; }
+body.accessibility-mode .hud-pill { min-height: 54px; padding: 8px 15px; border-color: rgba(255,255,255,.18); background: rgba(8,17,31,.72); }
+body.accessibility-mode .hud-pill small { font-size: 11px; color: #d9e8ff; }
+body.accessibility-mode .hud-pill b { font-size: 18px; }
+body.accessibility-mode .bottom-hud { width: 118px; background: rgba(8,17,31,.64); border-color: rgba(255,255,255,.18); }
+body.accessibility-mode .item-btn { min-height: 56px; border-color: rgba(255,255,255,.24); }
+body.accessibility-mode .item-btn b { font-size: 11px; }
+body.high-contrast-targets #app { background: radial-gradient(circle at 18% 18%, #174a78 0%, transparent 30%), linear-gradient(145deg, #030916, #071831 58%, #020815); }
+body.high-contrast-targets .mode-card,
+body.high-contrast-targets .shop-card,
+body.high-contrast-targets .settings-card,
+body.high-contrast-targets .leader-card,
+body.high-contrast-targets .hero-card { border-color: rgba(255,255,255,.24); }
+body.reduced-motion *,
+body.reduced-motion *::before,
+body.reduced-motion *::after { animation: none !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+body.reduced-motion .bg-orbs::before,
+body.reduced-motion .bg-orbs::after { filter: blur(12px); opacity: .28; }
+@media (max-width: 700px) {
+  body.accessibility-mode .bottom-hud { left: max(10px, env(safe-area-inset-left)); right: max(132px, calc(env(safe-area-inset-right) + 132px)); bottom: calc(126px + env(safe-area-inset-bottom)); width: auto; }
+  body.accessibility-mode .item-btn { flex-basis: 56px; height: 56px; }
+  body.accessibility-mode .skill-btn { width: 118px; height: 118px; }
+  body.accessibility-mode .dpad { width: 126px; height: 126px; }
+}

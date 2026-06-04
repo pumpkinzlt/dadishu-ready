@@ -153,3 +153,16 @@ Coin pack buttons build an `options` object and call `DoRequest(options)`. The g
   - Second Chance: automatically rescues one failed run.
 - Updated HUD item labels, shop item cards, and in-game item buttons.
 - Restart/new run still clears temporary effects and cooldowns.
+## V25 Accessibility Mode Update
+
+This version adds an accessibility settings group for players who need easier timing, stronger visual cues, and calmer motion.
+
+### New Settings
+
+- **Accessibility Mode**: larger whack hit area, slower spawn pace, longer mole visibility, extra miss tolerance, and fewer trap/fast mole surprises.
+- **High Contrast Targets**: adds colored rings and labels to mole types such as GOLD, FAST, TRAP, and HIT.
+- **Reduced Motion**: reduces shake, lowers particle intensity, and disables heavy UI animation.
+
+### Notes
+
+Accessibility settings are saved in localStorage per guest/account save. They do not unlock paid modes for guests and do not change the login, payment, item, skin, leaderboard, or level-progress rules.
