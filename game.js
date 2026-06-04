@@ -23,10 +23,11 @@
   ];
 
   const paymentMethods = [
-    { type: 8004, label: 'Credit Card' },
-    { type: 8003, label: 'Apple Pay' },
-    { type: 8012, label: 'Google Pay' }
+    { type: 8004, label: 'Credit Card', icon: '💳', hint: 'Visa / Mastercard', badge: 'Recommended' },
+    { type: 8003, label: 'Apple Pay', icon: '', hint: 'Fast checkout', badge: 'iOS' },
+    { type: 8012, label: 'Google Pay', icon: 'G', hint: 'Android / Chrome', badge: 'Quick' }
   ];
+  let currentPaymentType = 8004;
 
   const itemDefs = {
     shield: { name: 'Safety Helmet', emoji: '🪖', cost: 120, duration: 20000, cooldown: 9000, desc: 'Blocks one wrong whack, escaped mole, or trap hit.' },
@@ -1325,19 +1326,30 @@
   function updateShop() {
     UI.shopCoins.textContent = save.coins || 0;
     const signedIn = isLoggedIn();
-    const paymentOptions = paymentMethods.map(method => `<option value="${method.type}">${method.label}</option>`).join('');
+    const paymentMethodCards = paymentMethods.map(method => {
+      const active = currentPaymentType === method.type;
+      return `
+        <button type="button" class="payment-method-card ${active ? 'ui-active' : ''}" data-payment-type="${method.type}" ${signedIn ? '' : 'disabled'} aria-pressed="${active ? 'true' : 'false'}">
+          <span class="method-icon">${method.icon}</span>
+          <span class="method-copy">
+            <b>${method.label}</b>
+            <small>${method.hint}</small>
+          </span>
+          <span class="method-badge">${method.badge}</span>
+        </button>`;
+    }).join('');
     document.getElementById('coinsShop').innerHTML = `
       <div class="payment-box ${signedIn ? '' : 'payment-locked'}">
-        <div>
-          <h3>${signedIn ? 'Secure Coin Top-Up' : 'Account Required for Coin Purchases'}</h3>
+        <div class="payment-copy">
+          <span class="payment-kicker">Payment Method</span>
+          <h3>${signedIn ? 'Choose How to Pay' : 'Account Required for Coin Purchases'}</h3>
           <p>${signedIn
-            ? 'Choose a payment method, then complete payment through the connected checkout service. Purchased coins are saved to your signed-in account.'
+            ? 'Select a checkout method first, then choose a coin pack. Purchased coins are saved to your signed-in account.'
             : 'Beginner Mode can be played without login, but paid coins must be tied to a registered account so they do not get lost.'}</p>
         </div>
-        <label>
-          <span>Payment Method</span>
-          <select id="paymentTypeSelect" aria-label="Payment method" ${signedIn ? '' : 'disabled'}>${paymentOptions}</select>
-        </label>
+        <div class="payment-method-grid" role="radiogroup" aria-label="Payment method">
+          ${paymentMethodCards}
+        </div>
       </div>
       <div class="shop-card-grid">
         ${coinPacks.map(pack => `
@@ -1749,6 +1761,11 @@
       document.getElementById(`${tab.dataset.shopTab}Shop`).classList.add('active');
       syncShopTabState();
     }
+    const payTypeBtn = e.target.closest('[data-payment-type]');
+    if (payTypeBtn && !payTypeBtn.disabled) {
+      setPaymentType(payTypeBtn.dataset.paymentType);
+      toast(`${paymentMethods.find(m => m.type === currentPaymentType)?.label || 'Payment method'} selected.`);
+    }
     const packBtn = e.target.closest('[data-buy-pack]');
     if (packBtn) buyPack(packBtn.dataset.buyPack);
     const itemBtn = e.target.closest('[data-buy-item]');
@@ -1797,9 +1814,20 @@
   });
 
   function selectedPaymentType() {
-    const el = document.getElementById('paymentTypeSelect');
-    const type = Number(el?.value || 8004);
+    const activeCard = document.querySelector('.payment-method-card.ui-active[data-payment-type]');
+    const type = Number(activeCard?.dataset.paymentType || currentPaymentType || 8004);
     return paymentMethods.some(method => method.type === type) ? type : 8004;
+  }
+
+  function setPaymentType(type) {
+    const normalized = Number(type);
+    if (!paymentMethods.some(method => method.type === normalized)) return;
+    currentPaymentType = normalized;
+    document.querySelectorAll('.payment-method-card[data-payment-type]').forEach(card => {
+      const active = Number(card.dataset.paymentType) === currentPaymentType;
+      card.classList.toggle('ui-active', active);
+      card.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
   }
 
   function paymentReturnUrl(status, packId, orderId) {
@@ -1943,15 +1971,27 @@
     }));
 
     audio.play('payment');
+    const checkoutLabel = paymentMethods.find(m => m.type === payType)?.label || 'payment';
+    const beforeCheckoutUrl = window.location.href;
     try {
       const result = window.DoRequest(options);
       console.info('Payment request sent:', options, result);
-      toast(`Opening ${paymentMethods.find(m => m.type === payType)?.label || 'payment'} checkout...`);
+      toast(`Opening ${checkoutLabel} checkout...`);
     } catch (err) {
-      console.error('Payment request failed.', err);
-      localStorage.removeItem(PAYMENT_PENDING_KEY);
-      toast('Payment service is not available. Please try again later.');
+      // Some third-party checkout scripts throw after starting a redirect or popup.
+      // Do not show a hard failure or clear the pending order here, otherwise users see
+      // a false error even when the payment page opens correctly.
+      console.warn('Payment checkout raised a script warning after launch attempt.', err);
+      console.info('Payment request options:', options);
+      toast(`Opening ${checkoutLabel} checkout...`);
     }
+
+    window.setTimeout(() => {
+      const pendingStillExists = localStorage.getItem(PAYMENT_PENDING_KEY);
+      if (!document.hidden && window.location.href === beforeCheckoutUrl && pendingStillExists) {
+        toast('If checkout did not open, please try again or choose another payment method.');
+      }
+    }, 4500);
   }
 
   window.MoleRushPayDebug = () => ({

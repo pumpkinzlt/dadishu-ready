@@ -1,3 +1,16 @@
+# V22 Payment False Error Fix
+
+## V23 - Payment Method UI Emphasis
+- Replaced the small payment method dropdown with large checkout method cards.
+- Credit Card / Apple Pay / Google Pay are now visually obvious before selecting a coin pack.
+- Selected payment method uses a persistent filled state; hover-only borders do not conflict with button selection.
+- Existing login-required purchase logic, DoRequest(options), and payment return handling are preserved.
+
+
+- Fixed false payment failure toast that could appear after `DoRequest(options)` while checkout still opened normally.
+- Checkout launch now keeps the pending order and shows only an opening message.
+- If checkout does not open after a few seconds, the game shows a soft retry hint instead of a hard payment error.
+
 # Mole Rush Arena
 
 A GitHub Pages-ready HTML5 Canvas arcade whack-a-mole game.
