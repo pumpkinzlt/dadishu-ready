@@ -6,6 +6,7 @@
   const CURRENT_USER_KEY = 'moleRushArenaCurrentUser_v1';
   const PAYMENT_PENDING_KEY = 'moleRushArenaPendingPayment_v1';
   const VERSION = 1;
+  const DAILY_REWARD_AMOUNT = 50;
   const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
   const rand = (min, max) => Math.random() * (max - min) + min;
   const pick = arr => arr[Math.floor(Math.random() * arr.length)];
@@ -30,12 +31,12 @@
   let currentPaymentType = 8004;
 
   const itemDefs = {
-    shield: { name: 'Safety Helmet', emoji: '🪖', cost: 120, duration: 20000, cooldown: 9000, shortcut: '1', desc: 'Blocks one wrong whack, escaped mole, or trap hit.', how: 'Use before a risky streak. It protects one mistake and then disappears.' },
-    magnet: { name: 'Golden Bait', emoji: '🍯', cost: 150, duration: 14000, cooldown: 15000, shortcut: '2', desc: 'Attracts more golden moles and adds bonus coin pickups.', how: 'Use when several holes are clear. More gold moles appear for a short time.' },
-    double: { name: 'Combo Mallet', emoji: '🔨', cost: 180, duration: 14000, cooldown: 17000, shortcut: '3', desc: 'Builds combo faster, boosts score, and doubles coins.', how: 'Use after you have found a rhythm. Keep hitting moles to multiply rewards.' },
-    bomb: { name: 'Stun Smash', emoji: '💥', cost: 220, duration: 0, cooldown: 12000, shortcut: '4', desc: 'Safely stuns every visible mole without trap penalties.', how: 'Use when the board is crowded. It clears visible moles once and starts cooldown.' },
-    speed: { name: 'Slow-Mo Clock', emoji: '⏱️', cost: 160, duration: 12000, cooldown: 15000, shortcut: '5', desc: 'Keeps moles above ground longer for easier whacks.', how: 'Use when the game gets too fast. Moles stay visible longer.' },
-    revive: { name: 'Second Chance', emoji: '❤️', cost: 300, duration: 0, cooldown: 0, shortcut: 'Auto', desc: 'Automatically rescues one failed run.', how: 'No manual button. If owned, it automatically saves you when the run would end.' }
+    shield: { name: 'Forgiving Hammer', emoji: '🛡️', cost: 120, duration: 36000, cooldown: 6000, shortcut: '1', desc: 'Forgives one missed swing, escaped mole, or trap penalty so your run can continue.', how: 'Use before a risky streak. The HUD shows FORGIVING HAMMER, and the next mistake displays Forgiven! instead of adding a miss.' },
+    magnet: { name: 'Golden Bait', emoji: '🍯', cost: 150, duration: 30000, cooldown: 8000, shortcut: '2', desc: 'Greatly boosts golden mole spawns for a longer window and adds +5 bonus coins on every hit.', how: 'Use when the board is clear. It immediately attracts gold moles and keeps them appearing for a short time.' },
+    double: { name: 'Combo Mallet', emoji: '🔨', cost: 180, duration: 28000, cooldown: 9000, shortcut: '3', desc: 'Longer combo power window with triple combo growth, double score, and triple coin rewards.', how: 'Use after you find a rhythm. The HUD shows Combo x3 and every hit gives much bigger rewards.' },
+    bomb: { name: 'Stun Smash', emoji: '💥', cost: 220, duration: 0, cooldown: 8000, shortcut: '4', desc: 'Instantly stuns and clears all visible moles without trap penalties.', how: 'Use when the board is crowded. It creates a full-board shockwave and clears visible targets once.' },
+    speed: { name: 'Slow-Mo Clock', emoji: '⏱️', cost: 160, duration: 32000, cooldown: 8000, shortcut: '5', desc: 'Strongly slows the board for a longer window and makes all moles stay up much longer.', how: 'Use when the game gets too fast. Existing moles receive extra time and new moles move slower.' },
+    revive: { name: 'Second Chance', emoji: '❤️', cost: 300, duration: 0, cooldown: 0, shortcut: 'Auto', desc: 'Automatically rescues one failed run and restores time/miss allowance.', how: 'No manual button. If owned, it visibly triggers when the run would end.' }
   };
 
   const skins = [
@@ -49,11 +50,12 @@
 
   const levels = Array.from({ length: 12 }, (_, i) => ({
     level: i + 1,
-    time: clamp(45 - i, 30, 45),
-    target: 90 + i * 35,
-    missLimit: clamp(5 - Math.floor(i / 4), 2, 5),
-    star2: 125 + i * 42,
-    star3: 165 + i * 52
+    // Longer levels give players enough time to learn items instead of ending before they react.
+    time: clamp(95 - i * 2, 72, 95),
+    target: 95 + i * 32,
+    missLimit: clamp(8 - Math.floor(i / 4), 4, 8),
+    star2: 140 + i * 40,
+    star3: 190 + i * 50
   }));
 
   const defaultLeaderboard = [
@@ -126,7 +128,7 @@
       levelProgress: { unlocked: 1, stars: {} },
       leaderboard: defaultLeaderboard,
       settings: { music: true, sfx: true, accessibility: false, highContrast: false, reduceMotion: false },
-      dailyReward: { claimed: false, amount: 20 },
+      dailyReward: { claimed: false, amount: DAILY_REWARD_AMOUNT, claimedDate: '', streak: 0, lastClaimAt: 0 },
       lastLoginDate: ''
     };
   }
@@ -144,7 +146,7 @@
         ownedItems: { ...base.ownedItems, ...(parsed.ownedItems || {}) },
         levelProgress: { ...base.levelProgress, ...(parsed.levelProgress || {}) },
         settings: { ...base.settings, ...(parsed.settings || {}) },
-        dailyReward: { ...base.dailyReward, ...(parsed.dailyReward || {}) },
+        dailyReward: { ...base.dailyReward, ...(parsed.dailyReward || {}), amount: DAILY_REWARD_AMOUNT },
         leaderboard: Array.isArray(parsed.leaderboard) ? parsed.leaderboard : base.leaderboard
       };
     } catch (err) {
@@ -328,6 +330,10 @@
     authMessage: document.getElementById('authMessage'),
     loginBtn: document.getElementById('loginBtn'),
     registerBtn: document.getElementById('registerBtn'),
+    dailyRewardCard: document.getElementById('dailyRewardCard'),
+    dailyRewardTitle: document.getElementById('dailyRewardTitle'),
+    dailyRewardDesc: document.getElementById('dailyRewardDesc'),
+    dailyRewardBtn: document.getElementById('dailyRewardBtn'),
     homeCoins: document.getElementById('homeCoins'),
     homeBest: document.getElementById('homeBest'),
     homeSkin: document.getElementById('homeSkin'),
@@ -397,8 +403,9 @@
       this.coinsEarned = 0;
       this.misses = 0;
       this.combo = 0;
-      this.timeLeft = 60;
-      this.missLimit = 5;
+      this.timeLeft = 100;
+      this.sessionBaseTime = 100;
+      this.missLimit = 7;
       this.targetScore = 0;
       this.spawnTimer = 0;
       this.spawnInterval = 900;
@@ -408,6 +415,8 @@
       this.shake = 0;
       this.bgTime = 0;
       this.activeLoopToken = 0;
+      this.forceGoldSpawns = 0;
+      this.itemBanner = null;
       this.loop = this.loop.bind(this);
     }
 
@@ -472,6 +481,8 @@
       this.spawnTimer = 200;
       this.effects = { shield: 0, magnet: 0, double: 0, speed: 0, revived: false };
       this.cooldowns = { shield: 0, magnet: 0, double: 0, bomb: 0, speed: 0, revive: 0 };
+      this.forceGoldSpawns = 0;
+      this.itemBanner = null;
       this.ai = [
         { name: 'Rex', score: rand(0, 25), speed: rand(0.5, 1.1) },
         { name: 'Luna', score: rand(0, 25), speed: rand(0.5, 1.2) },
@@ -483,21 +494,25 @@
         this.missLimit = cfg.missLimit;
         this.targetScore = cfg.target;
       } else if (mode === 'arena') {
-        this.timeLeft = 75;
-        this.missLimit = 4;
+        // Arena remains the fastest mode, but is long enough to understand items and ranking.
+        this.timeLeft = 95;
+        this.missLimit = 6;
         this.targetScore = 0;
       } else if (mode === 'beginner') {
-        this.timeLeft = 60;
-        this.missLimit = 8;
+        // Beginner is now a real practice run, not a short demo.
+        this.timeLeft = 120;
+        this.missLimit = 14;
         this.targetScore = 0;
       } else {
-        this.timeLeft = 60;
-        this.missLimit = 5;
+        this.timeLeft = 100;
+        this.missLimit = 8;
         this.targetScore = 0;
       }
+      this.sessionBaseTime = this.timeLeft;
       if (accessibilityOn()) {
-        this.timeLeft += this.mode === 'arena' ? 8 : 10;
-        this.missLimit += this.mode === 'beginner' ? 3 : 2;
+        this.timeLeft += this.mode === 'arena' ? 12 : 18;
+        this.sessionBaseTime = this.timeLeft;
+        this.missLimit += this.mode === 'beginner' ? 4 : 3;
       }
       this.resize();
       this.hammer.x = this.w / 2;
@@ -514,10 +529,11 @@
         : this.mode === 'arena'
           ? 'Arena Rush: beat the AI rivals!'
           : this.mode === 'beginner'
-            ? 'Beginner Training: easy warm-up!'
-            : 'Classic Mode: chase the best score!';
+            ? 'Beginner Training: 2-minute practice run!' 
+            : 'Classic Mode: 100-second high score run!';
       if (accessibilityOn()) this.floatText('Accessibility Assist On', this.w / 2, Math.min(166, this.h * 0.26), '#64ff9a');
       this.floatText(intro, this.w / 2, Math.min(132, this.h * 0.2), theme.spark);
+      this.floatText('Items last longer now: tap the dock or press 1-5', this.w / 2, Math.min(158, this.h * 0.24), '#f6fbff');
       audio.play('start');
       audio.startMusic(this.mode);
       const token = this.activeLoopToken;
@@ -543,23 +559,27 @@
         if (typeof this.effects[k] === 'number') this.effects[k] = Math.max(0, this.effects[k] - dt);
       });
       Object.keys(this.cooldowns).forEach(k => this.cooldowns[k] = Math.max(0, this.cooldowns[k] - dt));
+      if (this.itemBanner) {
+        this.itemBanner.life = Math.max(0, this.itemBanner.life - dt);
+        if (this.itemBanner.life <= 0) this.itemBanner = null;
+      }
       this.updateHammer(dt);
-      const elapsedBase = this.mode === 'arena' ? 75 : this.mode === 'level' ? (levels[this.level - 1] || levels[0]).time : 60;
-      let difficulty = 1 + Math.min(1.35, (this.score / 420) + ((elapsedBase - this.timeLeft) / 110));
-      if (this.mode === 'beginner') difficulty = 1 + Math.min(0.75, (this.score / 620) + ((elapsedBase - this.timeLeft) / 160));
-      if (this.mode === 'arena') difficulty += 0.32;
+      const elapsedBase = this.sessionBaseTime || this.timeLeft || 100;
+      let difficulty = 1 + Math.min(1.1, (this.score / 620) + ((elapsedBase - this.timeLeft) / 155));
+      if (this.mode === 'beginner') difficulty = 1 + Math.min(0.55, (this.score / 820) + ((elapsedBase - this.timeLeft) / 230));
+      if (this.mode === 'arena') difficulty += 0.24;
       if (this.mode === 'level') difficulty += Math.min(0.45, this.level * 0.045);
       if (accessibilityOn()) difficulty *= 0.82;
-      const speedMod = (this.effects.speed > 0 ? 0.72 : 1) * (accessibilityOn() ? 0.86 : 1);
-      if (this.mode === 'beginner') this.spawnInterval = clamp(1120 / difficulty, 520, 1120);
-      else if (this.mode === 'arena') this.spawnInterval = clamp(760 / difficulty, 300, 760);
-      else if (this.mode === 'level') this.spawnInterval = clamp((940 - this.level * 18) / difficulty, 330, 900);
-      else this.spawnInterval = clamp(940 / difficulty, 390, 940);
+      const speedMod = (this.effects.speed > 0 ? 0.45 : 1) * (accessibilityOn() ? 0.86 : 1);
+      if (this.mode === 'beginner') this.spawnInterval = clamp(1450 / difficulty, 780, 1450);
+      else if (this.mode === 'arena') this.spawnInterval = clamp(880 / difficulty, 390, 880);
+      else if (this.mode === 'level') this.spawnInterval = clamp((1180 - this.level * 16) / difficulty, 520, 1120);
+      else this.spawnInterval = clamp(1120 / difficulty, 540, 1120);
       if (this.spawnTimer <= 0) {
         this.spawnMole(difficulty);
         if (this.mode === 'arena' && Math.random() > 0.48) this.spawnMole(difficulty);
-        if (this.mode === 'level' && this.level >= 7 && Math.random() > 0.72) this.spawnMole(difficulty);
-        this.spawnTimer = this.spawnInterval * rand(0.75, 1.18) * accessibilityMultiplier();
+        if (this.mode === 'level' && this.level >= 8 && Math.random() > 0.78) this.spawnMole(difficulty);
+        this.spawnTimer = this.spawnInterval * rand(0.75, 1.18) * accessibilityMultiplier() * (this.effects.speed > 0 ? 1.55 : 1);
       }
       for (const mole of this.moles) mole.update(dt * speedMod);
       this.moles = this.moles.filter(mole => {
@@ -607,41 +627,45 @@
       this.hammer.angle = Math.sin(this.bgTime * 3.2) * 0.08 - this.hammer.swing * 1.2;
     }
 
-    spawnMole(difficulty) {
+    spawnMole(difficulty, forcedType = '') {
       const free = this.holes.filter(h => !h.mole);
       if (!free.length) return;
       const hole = pick(free);
       const roll = Math.random();
-      let type = 'normal';
-      if (this.mode === 'beginner') {
-        if (roll > 0.92) type = 'gold';
-        else if (roll > 0.84 && this.score > 180) type = 'fast';
-      } else if (this.mode === 'arena') {
+      let type = forcedType || 'normal';
+      if (!forcedType && this.forceGoldSpawns > 0) {
+        type = 'gold';
+        this.forceGoldSpawns -= 1;
+      } else if (!forcedType && this.mode === 'beginner') {
+        if (roll > 0.9) type = 'gold';
+        else if (roll > 0.9 && this.score > 260) type = 'fast';
+      } else if (!forcedType && this.mode === 'arena') {
         if (roll > 0.88) type = 'gold';
-        else if (roll > 0.66 && this.score > 40) type = 'bad';
-        else if (roll > 0.42 && this.score > 70) type = 'fast';
-      } else if (this.mode === 'level') {
-        if (roll > 0.9) type = 'gold';
-        else if (roll > 0.76 && this.level >= 3) type = 'bad';
-        else if (roll > 0.62 && this.level >= 2) type = 'fast';
-      } else {
-        if (roll > 0.9) type = 'gold';
-        else if (roll > 0.8 && this.score > 80) type = 'bad';
-        else if (roll > 0.69 && this.score > 130) type = 'fast';
+        else if (roll > 0.72 && this.score > 90) type = 'bad';
+        else if (roll > 0.50 && this.score > 130) type = 'fast';
+      } else if (!forcedType && this.mode === 'level') {
+        if (roll > 0.88) type = 'gold';
+        else if (roll > 0.8 && this.level >= 4) type = 'bad';
+        else if (roll > 0.68 && this.level >= 3) type = 'fast';
+      } else if (!forcedType) {
+        if (roll > 0.88) type = 'gold';
+        else if (roll > 0.84 && this.score > 180) type = 'bad';
+        else if (roll > 0.73 && this.score > 240) type = 'fast';
       }
       if (accessibilityOn()) {
         if (type === 'bad' && Math.random() < 0.78) type = 'normal';
         if (type === 'fast' && Math.random() < 0.45) type = 'normal';
       }
       if (this.effects.magnet > 0) {
-        // Golden Bait should feel useful in a whack-a-mole game: more reward targets, fewer trap surprises.
-        if (type === 'bad' && Math.random() < 0.65) type = 'normal';
-        else if (type === 'normal' && Math.random() < 0.28) type = 'gold';
+        // Golden Bait should be obvious: lots more gold targets, almost no trap surprises.
+        if (type === 'bad' && Math.random() < 0.9) type = 'normal';
+        if (type === 'normal' && Math.random() < 0.62) type = 'gold';
+        if (type === 'fast' && Math.random() < 0.34) type = 'gold';
       }
-      const baseLife = this.mode === 'beginner' ? rand(1150, 1650) : this.mode === 'arena' ? rand(760, 1150) : this.mode === 'level' ? rand(880, 1360) : rand(950, 1420);
-      const minLife = this.mode === 'beginner' ? 690 : this.mode === 'arena' ? 430 : 520;
-      const maxLife = this.mode === 'beginner' ? 1650 : this.mode === 'arena' ? 1260 : 1450;
-      const life = clamp(baseLife / difficulty, minLife, maxLife) * (type === 'fast' ? 0.72 : 1) * (this.effects.speed > 0 ? 1.25 : 1) * (accessibilityOn() ? 1.34 : 1);
+      const baseLife = this.mode === 'beginner' ? rand(1650, 2250) : this.mode === 'arena' ? rand(980, 1450) : this.mode === 'level' ? rand(1250, 1850) : rand(1300, 1900);
+      const minLife = this.mode === 'beginner' ? 1050 : this.mode === 'arena' ? 650 : 820;
+      const maxLife = this.mode === 'beginner' ? 2350 : this.mode === 'arena' ? 1650 : 2050;
+      const life = clamp(baseLife / difficulty, minLife, maxLife) * (type === 'fast' ? 0.72 : 1) * (this.effects.speed > 0 ? 1.75 : 1) * (accessibilityOn() ? 1.34 : 1);
       const mole = new Mole(hole, type, life, this);
       audio.play('pop');
       hole.mole = mole;
@@ -680,20 +704,22 @@
         this.registerMiss(mole.x, mole.y, 'Trap!');
         return;
       }
-      this.combo += this.effects.double > 0 ? 2 : 1;
+      this.combo += this.effects.double > 0 ? 3 : 1;
       const base = mole.type === 'gold' ? 24 : mole.type === 'fast' ? 16 : 10;
       const comboBonus = Math.min(14, Math.floor(this.combo / 4));
       const modeBonus = this.mode === 'arena' ? 1.18 : this.mode === 'level' ? 1.05 + Math.min(this.level, 12) * 0.012 : 1;
-      const powerBonus = this.effects.double > 0 ? 1.25 : 1;
+      const powerBonus = this.effects.double > 0 ? 2 : 1;
       const points = Math.round((base + comboBonus + (fromBomb ? 3 : 0)) * modeBonus * powerBonus);
       const coinBase = mole.type === 'gold' ? 6 : this.mode === 'arena' ? 3 : 2;
-      const baitBonus = this.effects.magnet > 0 ? 2 : 0;
-      const coinGain = (coinBase + baitBonus + Math.floor(this.combo / 5)) * (this.effects.double > 0 ? 2 : 1);
+      const baitBonus = this.effects.magnet > 0 ? 5 : 0;
+      const coinGain = (coinBase + baitBonus + Math.floor(this.combo / 5)) * (this.effects.double > 0 ? 3 : 1);
       this.score += points;
       this.coinsEarned += coinGain;
       audio.play(mole.type === 'gold' ? 'coin' : (this.combo >= 4 && this.combo % 4 === 0 ? 'combo' : 'score'));
       this.floatText(`+${points}`, mole.x, mole.y - 38, mole.type === 'gold' ? '#ffdf64' : '#ffffff');
       this.floatText(`+${coinGain} 🪙`, mole.x + 16, mole.y - 12, '#ffcf4d');
+      if (this.effects.double > 0) this.floatText('COMBO x3', mole.x - 18, mole.y + 22, '#64ff9a');
+      if (this.effects.magnet > 0) this.floatText('BAIT +5', mole.x + 22, mole.y + 38, '#ffdf64');
       this.spawnCoinBurst(mole.x, mole.y, coinGain);
       this.spark(mole.x, mole.y, mole.type === 'gold' ? '#ffdf64' : '#43e3ff', 16);
     }
@@ -701,7 +727,7 @@
     registerMiss(x, y, label) {
       if (this.effects.shield > 0) {
         this.effects.shield = 0;
-        this.floatText('Blocked!', x, y - 25, '#64ff9a');
+        this.floatText('Forgiven!', x, y - 25, '#64ff9a');
         this.spark(x, y, '#64ff9a', 20);
         audio.play('shield');
         return;
@@ -712,6 +738,11 @@
       this.floatText(label, x, y - 18, '#ff5470');
       this.spark(x, y, '#ff5470', 12);
       audio.play(label === 'Miss' || label === 'Escaped!' ? 'miss' : 'hurt');
+    }
+
+    showItemBanner(title, subtitle, color = '#64ff9a') {
+      this.itemBanner = { title, subtitle, color, life: 1700 };
+      this.floatText(title, this.w / 2, Math.min(172, this.h * 0.28), color);
     }
 
     useItem(id) {
@@ -725,22 +756,39 @@
       save.ownedItems[id] -= 1;
       this.cooldowns[id] = item.cooldown;
       if (id === 'bomb') {
+        const visibleCount = this.moles.filter(m => m.isHittable()).length;
         audio.play('bomb');
+        this.showItemBanner('STUN SMASH!', `Cleared ${visibleCount} visible target${visibleCount === 1 ? '' : 's'}`, '#ffcf4d');
         this.whack(this.w / 2, this.h / 2, true);
         this.ripples.push({ x: this.w / 2, y: this.h / 2, r: 10, a: 1, color: 'rgba(255,84,112,' });
-        this.shake = reduceMotionOn() ? 0 : (accessibilityOn() ? 6 : 12);
-      } else if (id === 'revive') {
-        audio.play('revive');
-        this.effects.revived = false;
-        this.floatText('Second Chance Ready', this.hammer.x, this.hammer.y - 40, '#ff94a6');
+        this.spark(this.w / 2, this.h / 2, '#ffcf4d', 46);
+        this.shake = reduceMotionOn() ? 0 : (accessibilityOn() ? 7 : 15);
       } else {
         this.effects[id] = item.duration;
-        this.floatText(`${item.name}!`, this.hammer.x, this.hammer.y - 40, '#64ff9a');
+        if (id === 'shield') {
+          audio.play('shield');
+          this.showItemBanner('FORGIVING HAMMER', 'Next mistake will be forgiven', '#64ff9a');
+          this.spark(this.hammer.x, this.hammer.y, '#64ff9a', 28);
+        } else if (id === 'magnet') {
+          audio.play('item');
+          this.forceGoldSpawns = Math.max(this.forceGoldSpawns, 4);
+          for (let i = 0; i < 2; i++) this.spawnMole(0.7, 'gold');
+          this.showItemBanner('GOLDEN BAIT!', 'Gold moles boosted + bonus coins', '#ffdf64');
+          this.spark(this.hammer.x, this.hammer.y, '#ffdf64', 34);
+        } else if (id === 'double') {
+          audio.play('combo');
+          this.showItemBanner('COMBO MALLET!', 'Score x2 • Combo x3 • Coins x3', '#70f1ff');
+          this.spark(this.hammer.x, this.hammer.y, '#70f1ff', 30);
+        } else if (id === 'speed') {
+          audio.play('item');
+          this.moles.forEach(m => { if (m.isHittable()) m.life += 2600; });
+          this.showItemBanner('SLOW-MO ON!', 'Moles stay up much longer', '#b8a7ff');
+          this.spark(this.hammer.x, this.hammer.y, '#b8a7ff', 32);
+        }
       }
       persist();
       updateAllUI();
       this.updateItemButtons();
-      if (!['bomb', 'revive'].includes(id)) audio.play(id === 'shield' ? 'shield' : 'item');
     }
 
     canRevive() {
@@ -751,8 +799,8 @@
       save.ownedItems.revive -= 1;
       persist();
       this.effects.revived = true;
-      this.timeLeft = Math.max(this.timeLeft, 16);
-      this.misses = Math.max(0, this.missLimit - 2);
+      this.timeLeft = Math.max(this.timeLeft, 30);
+      this.misses = Math.max(0, this.missLimit - 3);
       this.floatText('Second Chance!', this.w / 2, this.h / 2 - 80, '#ff94a6');
       this.spark(this.w / 2, this.h / 2, '#ff94a6', 42);
       this.shake = 0;
@@ -908,6 +956,7 @@
         btn.classList.toggle('active-effect', this.effects[id] > 0);
         const seconds = Math.ceil((this.cooldowns[id] || 0) / 1000);
         if (itemDefs[id]) btn.dataset.shortcut = itemDefs[id].shortcut || '';
+        btn.dataset.state = this.effects[id] > 0 ? 'ON' : seconds > 0 ? `${seconds}s` : count > 0 ? 'READY' : 'EMPTY';
         btn.title = seconds > 0 ? `${itemDefs[id].name} cooldown: ${seconds}s` : `${itemDefs[id].name} • Press ${itemDefs[id].shortcut}`;
       });
     }
@@ -926,6 +975,7 @@
       this.drawParticles();
       this.drawTexts();
       this.drawStatusBar();
+      this.drawItemBanner();
       this.drawHammer();
       ctx.restore();
     }
@@ -1035,12 +1085,39 @@
       ctx.restore();
     }
 
+    drawItemBanner() {
+      if (!this.itemBanner) return;
+      const alpha = clamp(this.itemBanner.life / 350, 0, 1);
+      const w = clamp(this.w * 0.48, 260, 520);
+      const x = this.w / 2 - w / 2;
+      const y = Math.min(this.h * 0.2 + 34, 178);
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      const g = ctx.createLinearGradient(x, y, x + w, y + 54);
+      g.addColorStop(0, 'rgba(8,17,31,.84)');
+      g.addColorStop(1, 'rgba(77,225,255,.18)');
+      ctx.fillStyle = g;
+      roundRect(ctx, x, y, w, 58, 20); ctx.fill();
+      ctx.strokeStyle = this.itemBanner.color;
+      ctx.lineWidth = 2;
+      roundRect(ctx, x + 1, y + 1, w - 2, 56, 19); ctx.stroke();
+      ctx.fillStyle = this.itemBanner.color;
+      ctx.font = '1000 18px Inter, Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(this.itemBanner.title, this.w / 2, y + 22);
+      ctx.fillStyle = '#f6fbff';
+      ctx.font = '900 12px Inter, Arial';
+      ctx.fillText(this.itemBanner.subtitle, this.w / 2, y + 42);
+      ctx.restore();
+    }
+
     drawStatusBar() {
       const barW = clamp(this.w * 0.32, 190, 360);
       const x = this.w / 2 - barW / 2;
       const y = this.h < 560 ? 72 : 78;
-      const baseTime = this.mode === 'arena' ? 75 : this.mode === 'level' ? (levels[this.level - 1] || levels[0]).time : 60;
-      const pct = clamp(this.timeLeft / (baseTime + (accessibilityOn() ? (this.mode === 'arena' ? 8 : 10) : 0)), 0, 1);
+      const baseTime = this.sessionBaseTime || this.timeLeft || 100;
+      const pct = clamp(this.timeLeft / baseTime, 0, 1);
       ctx.save();
       ctx.fillStyle = 'rgba(0,0,0,0.26)';
       roundRect(ctx, x, y, barW, 16, 8); ctx.fill();
@@ -1066,15 +1143,16 @@
         : this.mode === 'arena'
           ? `Arena • Rank #${this.getArenaRank()} • Time ${Math.ceil(this.timeLeft)}s • Misses ${this.misses}/${this.missLimit}`
           : this.mode === 'beginner'
-            ? `Beginner • Easy pace • Time ${Math.ceil(this.timeLeft)}s • Misses ${this.misses}/${this.missLimit}`
-            : `Classic • High Score • Time ${Math.ceil(this.timeLeft)}s • Misses ${this.misses}/${this.missLimit}`;
+            ? `Beginner • Practice Run • Time ${Math.ceil(this.timeLeft)}s • Misses ${this.misses}/${this.missLimit}`
+            : `Classic • 100s High Score • Time ${Math.ceil(this.timeLeft)}s • Misses ${this.misses}/${this.missLimit}`;
       const assistSuffix = accessibilityOn() ? ' • Assist ON' : '';
       ctx.fillText(detail + assistSuffix, this.w / 2, y - 5);
       const effectLabels = [];
-      if (this.effects.shield > 0) effectLabels.push('Helmet');
-      if (this.effects.magnet > 0) effectLabels.push('Golden Bait');
-      if (this.effects.double > 0) effectLabels.push('Combo Mallet');
-      if (this.effects.speed > 0) effectLabels.push('Slow-Mo');
+      if (this.effects.shield > 0) effectLabels.push(`Forgive ${Math.ceil(this.effects.shield / 1000)}s`);
+      if (this.effects.magnet > 0) effectLabels.push(`Golden Bait ${Math.ceil(this.effects.magnet / 1000)}s`);
+      if (this.effects.double > 0) effectLabels.push(`Combo x3 ${Math.ceil(this.effects.double / 1000)}s`);
+      if (this.effects.speed > 0) effectLabels.push(`Slow-Mo ${Math.ceil(this.effects.speed / 1000)}s`);
+      if (!this.effects.revived && (save.ownedItems.revive || 0) > 0) effectLabels.push('Second Chance Ready');
       if (effectLabels.length) {
         ctx.fillStyle = 'rgba(100,255,154,.16)';
         const chipW = clamp(effectLabels.join(' • ').length * 8 + 36, 210, this.w - 34);
@@ -1433,7 +1511,7 @@
           <p>Buy items here. During a run, use the compact item dock on the left side of PC screens or above the mobile controls. You can also press 1-5 on PC.</p>
         </div>
         <div class="item-shortcut-grid">
-          <span><b>1</b> Helmet</span><span><b>2</b> Bait</span><span><b>3</b> Combo</span><span><b>4</b> Stun</span><span><b>5</b> Slow-Mo</span><span><b>Auto</b> Second Chance</span>
+          <span><b>1</b> Forgive</span><span><b>2</b> Bait</span><span><b>3</b> Combo</span><span><b>4</b> Stun</span><span><b>5</b> Slow-Mo</span><span><b>Auto</b> Second Chance</span>
         </div>
       </div>
       <div class="shop-card-grid item-card-grid">
@@ -1524,6 +1602,7 @@
     updateShop();
     updateLeaderboard();
     updateSettings();
+    updateDailyRewardUI();
     updateLevels();
     updateModeAccess();
     syncDefaultButtonStates();
@@ -1548,16 +1627,91 @@
     persist();
   }
 
-  function claimDailyReward() {
-    const d = todayISO();
-    if (save.lastLoginDate !== d) {
-      save.lastLoginDate = d;
-      save.dailyReward = { claimed: true, amount: 20 };
-      save.coins += 20;
-      persist();
-      audio.play('coin');
-      toast('Daily reward: +20 Coins!');
+  function isoDateOffset(days) {
+    const date = new Date();
+    date.setDate(date.getDate() + days);
+    return date.toISOString().slice(0, 10);
+  }
+
+  function isDailyRewardClaimedToday() {
+    return !!(save.dailyReward && save.dailyReward.claimedDate === todayISO());
+  }
+
+  function updateDailyRewardUI() {
+    if (!UI.dailyRewardCard) return;
+    const loggedIn = isLoggedIn();
+    const claimed = loggedIn && isDailyRewardClaimedToday();
+    const streak = Number(save.dailyReward?.streak || 0);
+
+    UI.dailyRewardCard.classList.toggle('locked', !loggedIn);
+    UI.dailyRewardCard.classList.toggle('claimable', loggedIn && !claimed);
+    UI.dailyRewardCard.classList.toggle('claimed', claimed);
+
+    if (!loggedIn) {
+      UI.dailyRewardTitle.textContent = 'Log in to claim coins';
+      UI.dailyRewardDesc.textContent = 'Daily rewards are tied to your registered account so coins will not be stored in a temporary guest save.';
+      UI.dailyRewardBtn.textContent = 'Log In to Claim';
+      UI.dailyRewardBtn.disabled = false;
+      UI.dailyRewardBtn.classList.add('primary');
+      return;
     }
+
+    if (claimed) {
+      UI.dailyRewardTitle.textContent = `Claimed Today: +${DAILY_REWARD_AMOUNT} Coins`;
+      UI.dailyRewardDesc.textContent = `Come back tomorrow for another reward. Current streak: ${streak || 1} day${(streak || 1) > 1 ? 's' : ''}.`;
+      UI.dailyRewardBtn.textContent = 'Claimed';
+      UI.dailyRewardBtn.disabled = true;
+      UI.dailyRewardBtn.classList.remove('primary');
+      return;
+    }
+
+    UI.dailyRewardTitle.textContent = `Ready to Claim: +${DAILY_REWARD_AMOUNT} Coins`;
+    UI.dailyRewardDesc.textContent = `Collect once per calendar day. Current streak: ${streak || 0} day${(streak || 0) === 1 ? '' : 's'}.`;
+    UI.dailyRewardBtn.textContent = `Claim +${DAILY_REWARD_AMOUNT}`;
+    UI.dailyRewardBtn.disabled = false;
+    UI.dailyRewardBtn.classList.add('primary');
+  }
+
+  function claimDailyReward({ silent = false } = {}) {
+    if (!isLoggedIn()) {
+      updateDailyRewardUI();
+      if (!silent) {
+        setAuthMessage('Please register or log in to claim the daily reward.', 'error');
+        toast('Log in to claim daily coins.');
+      }
+      return false;
+    }
+
+    const today = todayISO();
+    if (isDailyRewardClaimedToday()) {
+      updateDailyRewardUI();
+      if (!silent) toast('Daily reward already claimed today.');
+      return false;
+    }
+
+    const previousClaimDate = save.dailyReward?.claimedDate || '';
+    const yesterday = isoDateOffset(-1);
+    const previousStreak = Number(save.dailyReward?.streak || 0);
+    const nextStreak = previousClaimDate === yesterday ? previousStreak + 1 : 1;
+
+    save.dailyReward = {
+      ...(save.dailyReward || {}),
+      claimed: true,
+      amount: DAILY_REWARD_AMOUNT,
+      claimedDate: today,
+      streak: nextStreak,
+      lastClaimAt: Date.now()
+    };
+    save.lastLoginDate = today;
+    save.coins = Number(save.coins || 0) + DAILY_REWARD_AMOUNT;
+    persist();
+    updateDailyRewardUI();
+    updateHome();
+    updateShop();
+    audio.play('coin');
+    if (!silent) toast(`Daily login reward: +${DAILY_REWARD_AMOUNT} Coins!`);
+    else toast(`Daily login reward claimed: +${DAILY_REWARD_AMOUNT} Coins!`);
+    return true;
   }
 
 
@@ -1587,7 +1741,7 @@
     if (currentUser) localStorage.setItem(CURRENT_USER_KEY, currentUser);
     else localStorage.removeItem(CURRENT_USER_KEY);
     save = loadSave();
-    claimDailyReward();
+    if (currentUser) claimDailyReward({ silent: true });
     updateAllUI();
   }
 
@@ -1846,6 +2000,19 @@
     if (payTypeBtn && !payTypeBtn.disabled) {
       setPaymentType(payTypeBtn.dataset.paymentType);
       toast(`${paymentMethods.find(m => m.type === currentPaymentType)?.label || 'Payment method'} selected.`);
+    }
+    const dailyBtn = e.target.closest('[data-claim-daily]');
+    if (dailyBtn) {
+      if (!isLoggedIn()) {
+        setHomeButtonActive(UI.startGameBtn);
+        setGroupActive('.auth-actions', UI.loginBtn);
+        activeAuthAction = 'login';
+        setAuthMessage('Please log in or register to claim your daily reward.', 'error');
+        UI.authEmailInput?.focus();
+        toast('Log in to claim daily coins.');
+      } else {
+        claimDailyReward();
+      }
     }
     const packBtn = e.target.closest('[data-buy-pack]');
     if (packBtn) buyPack(packBtn.dataset.buyPack);
