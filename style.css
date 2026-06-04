@@ -52,18 +52,31 @@ h1 { margin: 8px 0 10px; font-size: clamp(44px, 6.4vw, 70px); line-height: .94; 
 .auth-message.error { color: #ff8fa3; }
 .auth-message.success { color: #63ff9a; }
 
+.auth-card.signed-in { padding: 12px 14px; }
+.auth-card.signed-in .auth-status { margin-bottom: 0; }
+.auth-card.signed-in .auth-form { display: none !important; }
+.auth-card.guest-account .auth-form { display: grid; }
+.auth-card.signed-in #logoutBtn { min-width: 82px; }
+
 .home-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; max-width: 520px; margin: 0 auto; }
 .btn, .icon-btn, .hud-button, .tab, .item-btn { border: 0; cursor: pointer; color: var(--text); transition: transform .13s ease, filter .13s ease, background .13s ease, box-shadow .13s ease, border-color .13s ease, color .13s ease; }
 .btn { min-height: 48px; padding: 0 18px; border-radius: 16px; font-weight: 900; letter-spacing: .01em; background: transparent; border: 1px solid rgba(255,255,255,.22); box-shadow: none; }
-.btn:hover, .icon-btn:hover, .hud-button:hover, .tab:hover, .item-btn:hover { transform: translateY(-1px); filter: brightness(1.06); border-color: rgba(67,227,255,.44); box-shadow: 0 0 0 3px rgba(67,227,255,.08); }
+.btn:hover, .icon-btn:hover, .hud-button:hover, .tab:hover, .item-btn:hover { transform: translateY(-1px); filter: brightness(1.04); border-color: rgba(255,255,255,.24); box-shadow: none; }
+.btn:not(.ui-active):hover, .icon-btn:not(.ui-active):hover, .hud-button:not(.ui-active):hover, .tab:not(.ui-active):hover, .item-btn:not(.ui-active):hover { background: rgba(255,255,255,.035); color: var(--text); }
+.btn.ui-active:hover, .icon-btn.ui-active:hover, .hud-button.ui-active:hover, .tab.ui-active:hover, .item-btn.ui-active:hover { border-color: rgba(255,255,255,.4); box-shadow: 0 12px 28px rgba(31,169,255,.24); }
+button:focus { outline: none; }
+button:focus-visible { outline: 2px solid rgba(255,255,255,.34); outline-offset: 3px; }
 .btn.ui-active, .icon-btn.ui-active, .hud-button.ui-active, .tab.ui-active, .item-btn.ui-active { color: #04131f; background: linear-gradient(180deg, #70f1ff, #2d9dff); border-color: rgba(255,255,255,.34); box-shadow: 0 12px 28px rgba(31,169,255,.24); }
 .btn.danger.ui-active { color: #fff; background: linear-gradient(180deg, #ff7188, #e23d5a); border-color: rgba(255,255,255,.3); box-shadow: 0 12px 28px rgba(226,61,90,.28); }
 .btn.clicked, .tab.clicked, .icon-btn.clicked, .hud-button.clicked, .item-btn.clicked { transform: translateY(1px) scale(.98); filter: brightness(.98); }
 .btn:active, .icon-btn:active, .hud-button:active, .tab:active, .item-btn:active { transform: translateY(1px) scale(.98); filter: brightness(.98); }
-.btn.primary { color: var(--primary); background: transparent; border-color: rgba(67,227,255,.46); box-shadow: none; }
-.btn.ghost { background: transparent; color: var(--muted); }
+.btn.primary { color: var(--text); background: transparent; border-color: rgba(255,255,255,.22); box-shadow: none; }
+.btn.ghost { background: transparent; color: var(--muted); border-color: rgba(255,255,255,.22); }
 .btn.danger { background: transparent; color: #ff8fa3; border-color: rgba(255,84,112,.42); }
 .btn.primary:active, .btn.primary.ui-active { color: #04131f; background: linear-gradient(180deg, #70f1ff, #2d9dff); border-color: rgba(255,255,255,.34); box-shadow: 0 12px 28px rgba(31,169,255,.24); }
+.home-actions .btn.ui-active { color: #04131f; background: linear-gradient(180deg, #70f1ff, #2d9dff); border-color: rgba(255,255,255,.34); box-shadow: 0 12px 28px rgba(31,169,255,.24); }
+.home-actions .btn:not(.ui-active) { color: var(--text); background: transparent; border-color: rgba(255,255,255,.22); box-shadow: none; }
+.home-actions .btn:not(.ui-active):hover { background: rgba(255,255,255,.035); border-color: rgba(255,255,255,.28); box-shadow: none; }
 .btn.danger:active, .btn.danger.ui-active { color: #fff; background: linear-gradient(180deg, #ff7188, #e23d5a); border-color: rgba(255,255,255,.3); box-shadow: 0 12px 28px rgba(226,61,90,.28); }
 .btn.small { min-height: 40px; padding: 0 14px; border-radius: 13px; font-size: 14px; }
 .stat-strip { pointer-events: none; position: relative; z-index: 2; left: auto; bottom: auto; transform: none; display: flex; gap: 10px; width: min(720px, 94vw); flex-shrink: 0; }
@@ -288,4 +301,80 @@ td { color: var(--text); }
   .shop-card-grid { grid-template-columns: 1fr; }
   .payment-box { flex-direction: column; align-items: stretch; }
   .payment-box label { min-width: 0; }
+}
+
+/* V16 account-gated paid coin purchase states */
+.payment-box.payment-locked {
+  background: linear-gradient(135deg, rgba(255, 185, 70, .18), rgba(14, 24, 46, .72));
+  border-color: rgba(255, 207, 77, .28);
+}
+.locked-card {
+  opacity: .88;
+}
+.btn.login-required {
+  border-color: rgba(255, 207, 77, .45);
+  color: #ffdf82;
+}
+.btn.login-required:hover {
+  background: rgba(255, 207, 77, .12);
+}
+.payment-box select:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+/* V20: strict button visual states
+   - Cyan border is hover-only for unselected buttons.
+   - .primary no longer leaves a permanent cyan outline after another button is selected.
+   - Only .ui-active can keep the filled selected background. */
+.btn:not(.ui-active),
+.tab:not(.ui-active),
+.auth-actions .btn:not(.ui-active),
+.home-actions .btn:not(.ui-active),
+.shop-tabs .tab:not(.ui-active) {
+  background: transparent !important;
+  color: var(--text) !important;
+  border-color: rgba(255,255,255,.22) !important;
+  box-shadow: none !important;
+}
+
+.btn.primary:not(.ui-active),
+.home-actions .btn.primary:not(.ui-active),
+.auth-actions .btn.primary:not(.ui-active),
+.shop-tabs .tab.primary:not(.ui-active) {
+  background: transparent !important;
+  color: var(--text) !important;
+  border-color: rgba(255,255,255,.22) !important;
+  box-shadow: none !important;
+}
+
+.btn:not(.ui-active):hover,
+.tab:not(.ui-active):hover,
+.auth-actions .btn:not(.ui-active):hover,
+.home-actions .btn:not(.ui-active):hover,
+.shop-tabs .tab:not(.ui-active):hover {
+  background: rgba(67,227,255,.045) !important;
+  border-color: rgba(67,227,255,.72) !important;
+  box-shadow: 0 0 0 1px rgba(67,227,255,.10) !important;
+  color: var(--text) !important;
+}
+
+.btn.ui-active,
+.tab.ui-active,
+.auth-actions .btn.ui-active,
+.home-actions .btn.ui-active,
+.shop-tabs .tab.ui-active {
+  color: #04131f !important;
+  background: linear-gradient(180deg, #70f1ff, #2d9dff) !important;
+  border-color: rgba(255,255,255,.34) !important;
+  box-shadow: 0 12px 28px rgba(31,169,255,.24) !important;
+}
+
+.btn.ui-active:hover,
+.tab.ui-active:hover,
+.auth-actions .btn.ui-active:hover,
+.home-actions .btn.ui-active:hover,
+.shop-tabs .tab.ui-active:hover {
+  border-color: rgba(255,255,255,.44) !important;
+  box-shadow: 0 14px 30px rgba(31,169,255,.28) !important;
 }

@@ -76,3 +76,57 @@ Coin pack buttons build an `options` object and call `DoRequest(options)`. The g
 - Mode Select defaults to Classic only after login; locked guest modes do not show a fake selected state.
 - Shop opens with Coin Packs selected by default, and tabs keep one selected state at a time.
 - Button selection is now group-based so unrelated buttons do not keep incorrect backgrounds.
+
+## V15 Guest Payment Fix
+- Guest players can buy coin packs without registering or logging in.
+- Logged-in payments use the account email.
+- Guest payments use the email typed in the auth email field when valid; otherwise the game generates a valid guest email for the payment request.
+- Guest coin purchases are credited to the guest local save after a matching success return.
+
+
+## V16 Payment Logic Update
+
+- Guest users can play Beginner Mode, but cannot buy paid coin packs.
+- Coin pack purchases require registration/login so purchased coins are tied to a specific account save.
+- If a guest taps a coin pack button, the game returns to the start screen and asks the player to register or log in.
+- Payment success grants coins to the pending order's account save key, preventing paid coins from being written to an unclear guest save.
+
+## V18 Home Button Selection Fix
+
+- Fixed the home menu button selected state so the clicked button actually keeps the blue background.
+- The five home menu buttons now behave as one strict group: Beginner/Start, Mode Select, Shop, Leaderboard, and Settings.
+- Only one home menu button can be active at a time.
+- Unselected home buttons stay transparent.
+- Hover/focus styling is now visually lighter, so it is not confused with the selected state.
+- Returning from Mode Select, Shop, Leaderboard, or Settings preserves the last selected home menu button.
+
+
+## V18 Update
+- Signed-in users now see a clean account status card only: email/password fields and Log In/Register buttons are hidden after login.
+- Logged-out users default to the Log In button being selected. Register remains selected only after the user chooses Register.
+- Home button selection logic from V17 is preserved.
+
+
+## V19 Button Hover Logic Update
+- Button hover no longer shows a cyan/selected-looking border.
+- Unselected buttons stay transparent with a neutral border.
+- Only clicked/selected buttons keep the blue filled background.
+- Signed-in auth UI, mode locks, payment login requirement, audio and storage logic are preserved.
+
+## V20 Button Hover / Selected State Fix
+- Unselected buttons no longer keep a cyan border because of the old `primary` class.
+- Cyan border is now hover-only.
+- Clicked/selected buttons keep the blue filled background through `ui-active`.
+- Same button group still supports single-selection logic.
+
+## V21 Item System Fit Update
+- Reworked the item set to better match whack-a-mole gameplay.
+- New item presentation:
+  - Safety Helmet: blocks one wrong whack, trap hit, or escaped mole.
+  - Golden Bait: attracts more golden moles and adds bonus coin rewards.
+  - Combo Mallet: builds combo faster, boosts score, and doubles coin gain.
+  - Stun Smash: safely stuns/clears every visible mole without trap penalties.
+  - Slow-Mo Clock: keeps moles above ground longer for easier reaction.
+  - Second Chance: automatically rescues one failed run.
+- Updated HUD item labels, shop item cards, and in-game item buttons.
+- Restart/new run still clears temporary effects and cooldowns.

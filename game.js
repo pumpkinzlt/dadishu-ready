@@ -29,12 +29,12 @@
   ];
 
   const itemDefs = {
-    shield: { name: 'Shield', emoji: '🛡️', cost: 120, duration: 20000, cooldown: 9000, desc: 'Blocks one miss or bad mole hit.' },
-    magnet: { name: 'Magnet', emoji: '🧲', cost: 150, duration: 12000, cooldown: 14000, desc: 'Pulls bonus coins into your wallet.' },
-    double: { name: 'Double Coins', emoji: '💰', cost: 180, duration: 15000, cooldown: 18000, desc: 'Doubles all coins earned for a short time.' },
-    bomb: { name: 'Bomb', emoji: '💣', cost: 220, duration: 0, cooldown: 12000, desc: 'Whacks every visible mole instantly.' },
-    speed: { name: 'Focus Boost', emoji: '⏱️', cost: 160, duration: 12000, cooldown: 15000, desc: 'Slows mole hide speed and improves reaction time.' },
-    revive: { name: 'Revive', emoji: '❤️', cost: 300, duration: 0, cooldown: 0, desc: 'Automatically gives one more chance after defeat.' }
+    shield: { name: 'Safety Helmet', emoji: '🪖', cost: 120, duration: 20000, cooldown: 9000, desc: 'Blocks one wrong whack, escaped mole, or trap hit.' },
+    magnet: { name: 'Golden Bait', emoji: '🍯', cost: 150, duration: 14000, cooldown: 15000, desc: 'Attracts more golden moles and adds bonus coin pickups.' },
+    double: { name: 'Combo Mallet', emoji: '🔨', cost: 180, duration: 14000, cooldown: 17000, desc: 'Builds combo faster, boosts score, and doubles coins.' },
+    bomb: { name: 'Stun Smash', emoji: '💥', cost: 220, duration: 0, cooldown: 12000, desc: 'Safely stuns every visible mole without trap penalties.' },
+    speed: { name: 'Slow-Mo Clock', emoji: '⏱️', cost: 160, duration: 12000, cooldown: 15000, desc: 'Keeps moles above ground longer for easier whacks.' },
+    revive: { name: 'Second Chance', emoji: '❤️', cost: 300, duration: 0, cooldown: 0, desc: 'Automatically rescues one failed run.' }
   };
 
   const skins = [
@@ -318,6 +318,7 @@
   const UI = {
     playerNameInput: document.getElementById('playerNameInput'),
     authStatus: document.getElementById('authStatus'),
+    authCard: document.getElementById('authCard'),
     authForm: document.getElementById('authForm'),
     logoutBtn: document.getElementById('logoutBtn'),
     startGameBtn: document.getElementById('startGameBtn'),
@@ -594,6 +595,11 @@
         else if (roll > 0.8 && this.score > 80) type = 'bad';
         else if (roll > 0.69 && this.score > 130) type = 'fast';
       }
+      if (this.effects.magnet > 0) {
+        // Golden Bait should feel useful in a whack-a-mole game: more reward targets, fewer trap surprises.
+        if (type === 'bad' && Math.random() < 0.65) type = 'normal';
+        else if (type === 'normal' && Math.random() < 0.28) type = 'gold';
+      }
       const baseLife = this.mode === 'beginner' ? rand(1150, 1650) : this.mode === 'arena' ? rand(760, 1150) : this.mode === 'level' ? rand(880, 1360) : rand(950, 1420);
       const minLife = this.mode === 'beginner' ? 690 : this.mode === 'arena' ? 430 : 520;
       const maxLife = this.mode === 'beginner' ? 1650 : this.mode === 'arena' ? 1260 : 1450;
@@ -627,16 +633,24 @@
       if (!mole.isHittable()) return;
       mole.hit();
       if (mole.type === 'bad') {
-        this.registerMiss(mole.x, mole.y, 'Ouch!');
+        if (fromBomb) {
+          this.score += 4;
+          this.floatText('Stunned!', mole.x, mole.y - 32, '#ffcf4d');
+          this.spark(mole.x, mole.y, '#ffcf4d', 14);
+          return;
+        }
+        this.registerMiss(mole.x, mole.y, 'Trap!');
         return;
       }
-      this.combo += 1;
+      this.combo += this.effects.double > 0 ? 2 : 1;
       const base = mole.type === 'gold' ? 24 : mole.type === 'fast' ? 16 : 10;
-      const comboBonus = Math.min(10, Math.floor(this.combo / 4));
+      const comboBonus = Math.min(14, Math.floor(this.combo / 4));
       const modeBonus = this.mode === 'arena' ? 1.18 : this.mode === 'level' ? 1.05 + Math.min(this.level, 12) * 0.012 : 1;
-      const points = Math.round((base + comboBonus + (fromBomb ? 3 : 0)) * modeBonus);
+      const powerBonus = this.effects.double > 0 ? 1.25 : 1;
+      const points = Math.round((base + comboBonus + (fromBomb ? 3 : 0)) * modeBonus * powerBonus);
       const coinBase = mole.type === 'gold' ? 6 : this.mode === 'arena' ? 3 : 2;
-      const coinGain = (coinBase + Math.floor(this.combo / 5)) * (this.effects.double > 0 ? 2 : 1);
+      const baitBonus = this.effects.magnet > 0 ? 2 : 0;
+      const coinGain = (coinBase + baitBonus + Math.floor(this.combo / 5)) * (this.effects.double > 0 ? 2 : 1);
       this.score += points;
       this.coinsEarned += coinGain;
       audio.play(mole.type === 'gold' ? 'coin' : (this.combo >= 4 && this.combo % 4 === 0 ? 'combo' : 'score'));
@@ -679,7 +693,7 @@
       } else if (id === 'revive') {
         audio.play('revive');
         this.effects.revived = false;
-        this.floatText('Revive Ready', this.hammer.x, this.hammer.y - 40, '#ff94a6');
+        this.floatText('Second Chance Ready', this.hammer.x, this.hammer.y - 40, '#ff94a6');
       } else {
         this.effects[id] = item.duration;
         this.floatText(`${item.name}!`, this.hammer.x, this.hammer.y - 40, '#64ff9a');
@@ -700,7 +714,7 @@
       this.effects.revived = true;
       this.timeLeft = Math.max(this.timeLeft, 16);
       this.misses = Math.max(0, this.missLimit - 2);
-      this.floatText('Revived!', this.w / 2, this.h / 2 - 80, '#ff94a6');
+      this.floatText('Second Chance!', this.w / 2, this.h / 2 - 80, '#ff94a6');
       this.spark(this.w / 2, this.h / 2, '#ff94a6', 42);
       this.shake = 0;
       audio.play('revive');
@@ -1014,13 +1028,14 @@
             : `Classic • High Score • Time ${Math.ceil(this.timeLeft)}s • Misses ${this.misses}/${this.missLimit}`;
       ctx.fillText(detail, this.w / 2, y - 5);
       const effectLabels = [];
-      if (this.effects.shield > 0) effectLabels.push('Shield');
-      if (this.effects.magnet > 0) effectLabels.push('Magnet');
-      if (this.effects.double > 0) effectLabels.push('2x Coins');
-      if (this.effects.speed > 0) effectLabels.push('Focus');
+      if (this.effects.shield > 0) effectLabels.push('Helmet');
+      if (this.effects.magnet > 0) effectLabels.push('Golden Bait');
+      if (this.effects.double > 0) effectLabels.push('Combo Mallet');
+      if (this.effects.speed > 0) effectLabels.push('Slow-Mo');
       if (effectLabels.length) {
         ctx.fillStyle = 'rgba(100,255,154,.16)';
-        roundRect(ctx, this.w / 2 - 105, y + 22, 210, 28, 14); ctx.fill();
+        const chipW = clamp(effectLabels.join(' • ').length * 8 + 36, 210, this.w - 34);
+        roundRect(ctx, this.w / 2 - chipW / 2, y + 22, chipW, 28, 14); ctx.fill();
         ctx.fillStyle = '#64ff9a';
         ctx.textBaseline = 'middle';
         ctx.fillText(effectLabels.join(' • '), this.w / 2, y + 36);
@@ -1250,10 +1265,18 @@
 
   function updateAuth() {
     if (!UI.authStatus) return;
-    if (isLoggedIn()) {
+    const loggedIn = isLoggedIn();
+    UI.authCard?.classList.toggle('signed-in', loggedIn);
+    UI.authCard?.classList.toggle('guest-account', !loggedIn);
+
+    if (loggedIn) {
       UI.authStatus.textContent = `Signed in: ${accounts[currentUser].email}`;
-      UI.authForm.hidden = true;
+      if (UI.authForm) {
+        UI.authForm.hidden = true;
+        UI.authForm.style.display = 'none';
+      }
       UI.logoutBtn.hidden = false;
+      setGroupActive('.auth-actions', null);
       if (UI.startGameBtn) {
         UI.startGameBtn.textContent = 'Start Game';
         UI.startGameBtn.title = 'Start the selected game mode.';
@@ -1261,12 +1284,17 @@
       setAuthMessage('Signed in. Your progress is saved under this account.', 'success');
     } else {
       UI.authStatus.textContent = 'Guest Mode';
-      UI.authForm.hidden = false;
+      if (UI.authForm) {
+        UI.authForm.hidden = false;
+        UI.authForm.style.display = '';
+      }
       UI.logoutBtn.hidden = true;
       if (UI.startGameBtn) {
         UI.startGameBtn.textContent = 'Beginner Mode';
         UI.startGameBtn.title = 'Start a beginner run without logging in.';
       }
+      const authDefault = activeAuthAction === 'register' ? UI.registerBtn : UI.loginBtn;
+      setGroupActive('.auth-actions', authDefault);
       setAuthMessage('Enter email and password, then choose Log In or Register.', 'info');
     }
   }
@@ -1296,26 +1324,29 @@
 
   function updateShop() {
     UI.shopCoins.textContent = save.coins || 0;
+    const signedIn = isLoggedIn();
     const paymentOptions = paymentMethods.map(method => `<option value="${method.type}">${method.label}</option>`).join('');
     document.getElementById('coinsShop').innerHTML = `
-      <div class="payment-box">
+      <div class="payment-box ${signedIn ? '' : 'payment-locked'}">
         <div>
-          <h3>Secure Coin Top-Up</h3>
-          <p>Choose a payment method, then complete payment through the connected checkout service.</p>
+          <h3>${signedIn ? 'Secure Coin Top-Up' : 'Account Required for Coin Purchases'}</h3>
+          <p>${signedIn
+            ? 'Choose a payment method, then complete payment through the connected checkout service. Purchased coins are saved to your signed-in account.'
+            : 'Beginner Mode can be played without login, but paid coins must be tied to a registered account so they do not get lost.'}</p>
         </div>
         <label>
           <span>Payment Method</span>
-          <select id="paymentTypeSelect" aria-label="Payment method">${paymentOptions}</select>
+          <select id="paymentTypeSelect" aria-label="Payment method" ${signedIn ? '' : 'disabled'}>${paymentOptions}</select>
         </label>
       </div>
       <div class="shop-card-grid">
         ${coinPacks.map(pack => `
-          <article class="shop-card">
+          <article class="shop-card ${signedIn ? '' : 'locked-card'}">
             <div class="emoji">${pack.emoji}</div>
             <h3>${pack.name}</h3>
             <p>${pack.desc}</p>
             <div class="price"><span>${pack.price}</span><span>${pack.coins} Coins</span></div>
-            <button type="button" class="btn primary small" data-buy-pack="${pack.id}">Pay Now</button>
+            <button type="button" class="btn primary small ${signedIn ? '' : 'login-required'}" data-buy-pack="${pack.id}">${signedIn ? 'Pay Now' : 'Log In to Buy'}</button>
           </article>
         `).join('')}
       </div>
@@ -1508,6 +1539,7 @@
   }
 
   function logoutAccount() {
+    activeAuthAction = 'login';
     syncName();
     game.mode = 'beginner';
     game.level = 1;
@@ -1520,6 +1552,29 @@
 
   function getActiveScreenId() {
     return document.querySelector('.screen.active')?.id || 'startScreen';
+  }
+
+  let activeHomeButton = null;
+  let activeAuthAction = 'login';
+
+  function getDefaultHomeButton() {
+    return UI.startGameBtn || document.querySelector('.home-actions .btn');
+  }
+
+  function setHomeButtonActive(btn) {
+    const group = document.querySelector('.home-actions');
+    if (!group) return;
+    const target = btn && group.contains(btn) && !btn.disabled ? btn : getDefaultHomeButton();
+    group.querySelectorAll('.btn.ui-active').forEach(el => el.classList.remove('ui-active'));
+    if (target) {
+      target.classList.add('ui-active');
+      activeHomeButton = target;
+    }
+  }
+
+  function getActiveHomeButton() {
+    if (activeHomeButton && document.body.contains(activeHomeButton) && !activeHomeButton.disabled) return activeHomeButton;
+    return getDefaultHomeButton();
   }
 
   function setGroupActive(groupSelector, activeEl) {
@@ -1544,6 +1599,10 @@
     if (!shouldKeepButtonActive(btn)) return;
     const group = getButtonGroup(btn);
     if (!group) return;
+    if (group.classList.contains('home-actions')) {
+      setHomeButtonActive(btn);
+      return;
+    }
     group.querySelectorAll('.ui-active').forEach(el => {
       if (el !== btn && shouldKeepButtonActive(el)) el.classList.remove('ui-active');
     });
@@ -1580,17 +1639,16 @@
 
     // Login/Register has a clear default: Log In. Register stays highlighted only after the user chooses it.
     if (!isLoggedIn() && UI.authForm && !UI.authForm.hidden) {
-      const authGroup = document.querySelector('.auth-actions');
-      if (authGroup && !authGroup.querySelector('.ui-active')) {
-        setGroupActive('.auth-actions', document.getElementById('loginBtn'));
-      }
+      const activeAuthButton = activeAuthAction === 'register' ? UI.registerBtn : UI.loginBtn;
+      setGroupActive('.auth-actions', activeAuthButton);
     } else {
       setGroupActive('.auth-actions', null);
     }
 
-    // The home screen always has a stable default action when opened.
+    // The home screen keeps one clear selected action. Fresh loads default to Beginner Mode / Start Game;
+    // after the user chooses Mode Select / Shop / Leaderboard / Settings, that chosen button remains selected.
     if (screenId === 'startScreen') {
-      setGroupActive('.home-actions', UI.startGameBtn);
+      setHomeButtonActive(getActiveHomeButton());
     }
 
     // Shop defaults to Coin Packs unless the user has selected another visible tab.
@@ -1621,15 +1679,28 @@
     if (authBtn) {
       e.preventDefault();
       const action = authBtn.dataset.auth;
-      if (action === 'register') registerAccount();
-      if (action === 'login') loginAccount();
-      if (action === 'logout') logoutAccount();
+      if (action === 'register') {
+        activeAuthAction = 'register';
+        setGroupActive('.auth-actions', UI.registerBtn);
+        registerAccount();
+      }
+      if (action === 'login') {
+        activeAuthAction = 'login';
+        setGroupActive('.auth-actions', UI.loginBtn);
+        loginAccount();
+      }
+      if (action === 'logout') {
+        activeAuthAction = 'login';
+        logoutAccount();
+      }
       return;
     }
 
     const screenTarget = e.target.closest('[data-screen]');
     if (screenTarget) {
       syncName();
+      const homeButton = screenTarget.closest('.home-actions .btn');
+      if (homeButton) setHomeButtonActive(homeButton);
       showScreen(screenTarget.dataset.screen);
       clearHiddenPanelButtonState();
       if (screenTarget.dataset.screen === 'modeScreen' && !isLoggedIn()) {
@@ -1639,6 +1710,7 @@
     const start = e.target.closest('[data-action="start-game"]');
     if (start) {
       syncName();
+      setHomeButtonActive(start);
       const startMode = getMainStartMode();
       showScreen('gameScreen');
       clearHiddenPanelButtonState();
@@ -1744,13 +1816,23 @@
     }
   }
 
-  function grantCoinPack(pack, orderId = '') {
-    if (!pack) return;
-    const grantedOrders = save.grantedPaymentOrders || [];
+  function grantCoinPack(pack, orderId = '', targetSaveKey = currentSaveKey()) {
+    if (!pack || !targetSaveKey) return;
+    let targetSave;
+    try {
+      const raw = localStorage.getItem(targetSaveKey);
+      targetSave = raw ? { ...defaultSave(), ...JSON.parse(raw) } : defaultSave();
+    } catch (err) {
+      console.warn('Could not load target save for payment grant.', err);
+      targetSave = defaultSave();
+    }
+    const grantedOrders = targetSave.grantedPaymentOrders || [];
     if (orderId && grantedOrders.includes(orderId)) return;
-    save.coins += pack.coins;
-    if (orderId) save.grantedPaymentOrders = [...grantedOrders, orderId].slice(-20);
-    persist();
+    targetSave.coins = (targetSave.coins || 0) + pack.coins;
+    if (orderId) targetSave.grantedPaymentOrders = [...grantedOrders, orderId].slice(-20);
+    targetSave.version = VERSION;
+    localStorage.setItem(targetSaveKey, JSON.stringify(targetSave));
+    if (targetSaveKey === currentSaveKey()) save = { ...save, ...targetSave };
     updateAllUI();
     audio.play('coin');
     toast(`${pack.name} added ${pack.coins} Coins.`);
@@ -1768,7 +1850,7 @@
     try { pending = pendingRaw ? JSON.parse(pendingRaw) : null; } catch (err) { pending = null; }
     const pack = coinPacks.find(p => p.id === packId);
     if (status === 'success' && pack && pending && pending.orderId === orderId && pending.packId === packId) {
-      grantCoinPack(pack, orderId);
+      grantCoinPack(pack, orderId, pending.saveKey || currentSaveKey());
       localStorage.removeItem(PAYMENT_PENDING_KEY);
     } else if (status === 'success' && pack) {
       console.warn('Payment success return ignored because no matching pending order was found.', { orderId, packId, pending });
@@ -1806,23 +1888,20 @@
     toast('Payment service is not ready. Refresh the page and try again.');
   }
 
+  function getPaymentEmail() {
+    return isLoggedIn() && isValidEmail(currentUser) ? normalizeEmail(currentUser) : '';
+  }
+
   function buyPack(id) {
     const pack = coinPacks.find(p => p.id === id);
     if (!pack) return;
     syncName();
 
     if (!isLoggedIn()) {
-      setAuthMessage('Please register or log in before buying coin packs.', 'error');
-      toast('Please register or log in before buying coin packs.');
+      setAuthMessage('Please register or log in before buying coins. Paid coins are saved to your account.', 'error');
+      toast('Please register or log in before buying coins.');
       showScreen('startScreen');
-      return;
-    }
-
-    const email = normalizeEmail(currentUser);
-    if (!isValidEmail(email)) {
-      setAuthMessage('Your account email is invalid. Please log in again.', 'error');
-      toast('Please log in with a valid email before payment.');
-      showScreen('startScreen');
+      clearHiddenPanelButtonState();
       return;
     }
 
@@ -1833,9 +1912,10 @@
 
     const payType = selectedPaymentType();
     const orderId = makePaymentOrderId(pack.id);
+    const email = getPaymentEmail();
     const nameParts = String(save.playerName || 'Player').trim().split(/\s+/);
     const firstName = nameParts[0] || 'Player';
-    const lastName = nameParts.slice(1).join(' ') || 'Guest';
+    const lastName = nameParts.slice(1).join(' ') || 'Player';
     const options = {
       orderId,
       amount: Number(pack.amount.toFixed(2)),
@@ -1858,6 +1938,7 @@
       payType,
       createdAt: Date.now(),
       saveKey: currentSaveKey(),
+      accountEmail: currentUser,
       email
     }));
 
