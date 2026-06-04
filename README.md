@@ -1,3 +1,13 @@
+# V24 Item Usage and Non-Blocking Layout
+
+- Added a clear **Item Guide** in Shop → Items.
+- Added item usage instructions in Settings.
+- In-game item buttons are now a compact dock instead of a large bottom bar.
+- PC layout: item dock sits on the left safe area and does not cover the main mole holes.
+- Mobile layout: item dock sits above the virtual controls and the play field reserves extra lower space.
+- Manual item shortcuts: `1` Helmet, `2` Bait, `3` Combo, `4` Stun, `5` Slow-Mo.
+- Second Chance is clarified as an auto-use item and is no longer shown in the in-game dock.
+
 # V22 Payment False Error Fix
 
 ## V23 - Payment Method UI Emphasis

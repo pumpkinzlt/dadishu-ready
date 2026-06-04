@@ -30,12 +30,12 @@
   let currentPaymentType = 8004;
 
   const itemDefs = {
-    shield: { name: 'Safety Helmet', emoji: '🪖', cost: 120, duration: 20000, cooldown: 9000, desc: 'Blocks one wrong whack, escaped mole, or trap hit.' },
-    magnet: { name: 'Golden Bait', emoji: '🍯', cost: 150, duration: 14000, cooldown: 15000, desc: 'Attracts more golden moles and adds bonus coin pickups.' },
-    double: { name: 'Combo Mallet', emoji: '🔨', cost: 180, duration: 14000, cooldown: 17000, desc: 'Builds combo faster, boosts score, and doubles coins.' },
-    bomb: { name: 'Stun Smash', emoji: '💥', cost: 220, duration: 0, cooldown: 12000, desc: 'Safely stuns every visible mole without trap penalties.' },
-    speed: { name: 'Slow-Mo Clock', emoji: '⏱️', cost: 160, duration: 12000, cooldown: 15000, desc: 'Keeps moles above ground longer for easier whacks.' },
-    revive: { name: 'Second Chance', emoji: '❤️', cost: 300, duration: 0, cooldown: 0, desc: 'Automatically rescues one failed run.' }
+    shield: { name: 'Safety Helmet', emoji: '🪖', cost: 120, duration: 20000, cooldown: 9000, shortcut: '1', desc: 'Blocks one wrong whack, escaped mole, or trap hit.', how: 'Use before a risky streak. It protects one mistake and then disappears.' },
+    magnet: { name: 'Golden Bait', emoji: '🍯', cost: 150, duration: 14000, cooldown: 15000, shortcut: '2', desc: 'Attracts more golden moles and adds bonus coin pickups.', how: 'Use when several holes are clear. More gold moles appear for a short time.' },
+    double: { name: 'Combo Mallet', emoji: '🔨', cost: 180, duration: 14000, cooldown: 17000, shortcut: '3', desc: 'Builds combo faster, boosts score, and doubles coins.', how: 'Use after you have found a rhythm. Keep hitting moles to multiply rewards.' },
+    bomb: { name: 'Stun Smash', emoji: '💥', cost: 220, duration: 0, cooldown: 12000, shortcut: '4', desc: 'Safely stuns every visible mole without trap penalties.', how: 'Use when the board is crowded. It clears visible moles once and starts cooldown.' },
+    speed: { name: 'Slow-Mo Clock', emoji: '⏱️', cost: 160, duration: 12000, cooldown: 15000, shortcut: '5', desc: 'Keeps moles above ground longer for easier whacks.', how: 'Use when the game gets too fast. Moles stay visible longer.' },
+    revive: { name: 'Second Chance', emoji: '❤️', cost: 300, duration: 0, cooldown: 0, shortcut: 'Auto', desc: 'Automatically rescues one failed run.', how: 'No manual button. If owned, it automatically saves you when the run would end.' }
   };
 
   const skins = [
@@ -402,8 +402,10 @@
     }
 
     buildHoles() {
-      const usableTop = this.h < 560 ? 90 : 120;
-      const usableBottom = this.h < 560 ? 110 : 120;
+      const compactGameUI = this.w < 680;
+      const landscapeCompact = this.h < 560;
+      const usableTop = landscapeCompact ? 90 : 120;
+      const usableBottom = compactGameUI ? (landscapeCompact ? 160 : 220) : (landscapeCompact ? 110 : 120);
       const cols = this.w < 680 ? 3 : 4;
       const rows = this.h < 520 ? 2 : 3;
       const marginX = this.w < 680 ? 38 : 90;
@@ -681,6 +683,7 @@
       if (!this.running || this.paused || this.finished) return;
       const item = itemDefs[id];
       if (!item) return;
+      if (id === 'revive') return toast('Second Chance is automatic. It triggers when a run would end.');
       if ((save.ownedItems[id] || 0) <= 0) return toast(`You need to buy ${item.name} first.`);
       if (this.cooldowns[id] > 0) return toast(`${item.name} is cooling down.`);
       if (['shield', 'magnet', 'double', 'speed'].includes(id) && this.effects[id] > 0) return toast(`${item.name} is already active.`);
@@ -868,7 +871,8 @@
         btn.classList.toggle('cooldown', this.cooldowns[id] > 0);
         btn.classList.toggle('active-effect', this.effects[id] > 0);
         const seconds = Math.ceil((this.cooldowns[id] || 0) / 1000);
-        btn.title = seconds > 0 ? `${itemDefs[id].name} cooldown: ${seconds}s` : itemDefs[id].name;
+        if (itemDefs[id]) btn.dataset.shortcut = itemDefs[id].shortcut || '';
+        btn.title = seconds > 0 ? `${itemDefs[id].name} cooldown: ${seconds}s` : `${itemDefs[id].name} • Press ${itemDefs[id].shortcut}`;
       });
     }
 
@@ -1363,15 +1367,30 @@
         `).join('')}
       </div>
     `;
-    document.getElementById('itemsShop').innerHTML = Object.entries(itemDefs).map(([id, item]) => `
-      <article class="shop-card">
-        <div class="emoji">${item.emoji}</div>
-        <h3>${item.name}</h3>
-        <p>${item.desc}</p>
-        <div class="price"><span>${item.cost} Coins</span><span>Owned: ${save.ownedItems[id] || 0}</span></div>
-        <button type="button" class="btn primary small" data-buy-item="${id}">Buy</button>
-      </article>
-    `).join('');
+    document.getElementById('itemsShop').innerHTML = `
+      <div class="item-usage-panel">
+        <div>
+          <span class="payment-kicker">Item Guide</span>
+          <h3>Use items without blocking the play field</h3>
+          <p>Buy items here. During a run, use the compact item dock on the left side of PC screens or above the mobile controls. You can also press 1-5 on PC.</p>
+        </div>
+        <div class="item-shortcut-grid">
+          <span><b>1</b> Helmet</span><span><b>2</b> Bait</span><span><b>3</b> Combo</span><span><b>4</b> Stun</span><span><b>5</b> Slow-Mo</span><span><b>Auto</b> Second Chance</span>
+        </div>
+      </div>
+      <div class="shop-card-grid item-card-grid">
+        ${Object.entries(itemDefs).map(([id, item]) => `
+          <article class="shop-card item-shop-card">
+            <div class="emoji">${item.emoji}</div>
+            <h3>${item.name}</h3>
+            <p>${item.desc}</p>
+            <p class="item-use-copy"><b>Use:</b> ${item.how}</p>
+            <div class="price"><span>${item.cost} Coins</span><span>${item.shortcut === 'Auto' ? 'Auto-use' : `Shortcut ${item.shortcut}`} • Owned: ${save.ownedItems[id] || 0}</span></div>
+            <button type="button" class="btn primary small" data-buy-item="${id}">Buy</button>
+          </article>
+        `).join('')}
+      </div>
+    `;
     document.getElementById('skinsShop').innerHTML = skins.map(skin => {
       const owned = save.ownedSkins.includes(skin.id);
       const equipped = save.equippedSkin === skin.id;
@@ -2083,6 +2102,12 @@
     if (['arrowleft', 'arrowright', 'arrowup', 'arrowdown', ' ', 'spacebar'].includes(key) || ['w','a','s','d','p','r'].includes(key)) evt.preventDefault();
     if (key === ' ') keyState.add('space'); else keyState.add(key);
     if (key === ' ' || key === 'spacebar') game.whack();
+    const shortcutMap = { '1': 'shield', '2': 'magnet', '3': 'double', '4': 'bomb', '5': 'speed' };
+    const typingTarget = ['input', 'textarea', 'select'].includes((document.activeElement?.tagName || '').toLowerCase());
+    if (!typingTarget && shortcutMap[key] && document.getElementById('gameScreen').classList.contains('active')) {
+      evt.preventDefault();
+      game.useItem(shortcutMap[key]);
+    }
     if (key === 'p') game.paused ? game.resume() : game.pause();
     if (key === 'r' && document.getElementById('gameScreen').classList.contains('active')) game.start(game.mode, game.level);
   });

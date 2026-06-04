@@ -95,13 +95,13 @@
         <h4>Live Board</h4>
         <ol id="miniLeaderboard"></ol>
       </div>
-      <div class="hud bottom-hud">
-        <button type="button" class="item-btn" data-item="shield"><span>🪖</span><b>Helmet</b><em id="item-shield-count">0</em></button>
-        <button type="button" class="item-btn" data-item="magnet"><span>🍯</span><b>Bait</b><em id="item-magnet-count">0</em></button>
-        <button type="button" class="item-btn" data-item="double"><span>🔨</span><b>Combo</b><em id="item-double-count">0</em></button>
-        <button type="button" class="item-btn" data-item="bomb"><span>💥</span><b>Stun</b><em id="item-bomb-count">0</em></button>
-        <button type="button" class="item-btn" data-item="speed"><span>⏱️</span><b>Slow-Mo</b><em id="item-speed-count">0</em></button>
-        <button type="button" class="item-btn" data-item="revive"><span>❤️</span><b>Chance</b><em id="item-revive-count">0</em></button>
+      <div class="hud bottom-hud" aria-label="Item dock">
+        <div class="item-dock-title">ITEMS 1-5</div>
+        <button type="button" class="item-btn" data-item="shield" aria-label="Use Safety Helmet"><span>🪖</span><b>Helmet</b><em id="item-shield-count">0</em></button>
+        <button type="button" class="item-btn" data-item="magnet" aria-label="Use Golden Bait"><span>🍯</span><b>Bait</b><em id="item-magnet-count">0</em></button>
+        <button type="button" class="item-btn" data-item="double" aria-label="Use Combo Mallet"><span>🔨</span><b>Combo</b><em id="item-double-count">0</em></button>
+        <button type="button" class="item-btn" data-item="bomb" aria-label="Use Stun Smash"><span>💥</span><b>Stun</b><em id="item-bomb-count">0</em></button>
+        <button type="button" class="item-btn" data-item="speed" aria-label="Use Slow-Mo Clock"><span>⏱️</span><b>Slow-Mo</b><em id="item-speed-count">0</em></button>
       </div>
       <div id="mobileControls" class="mobile-controls" aria-label="Mobile controls">
         <div class="dpad">
@@ -185,6 +185,12 @@
           <h3>Controls</h3>
           <p><b>PC:</b> Move the hammer with WASD / Arrow Keys, press Space to whack, P to pause, R to restart. You can also click/tap directly on moles.</p>
           <p><b>Mobile:</b> Tap a mole to whack it, use the virtual D-pad for hammer movement, and tap the WHACK button for a quick hit.</p>
+        </div>
+        <div class="control-help item-help">
+          <h3>Item Usage</h3>
+          <p><b>Buy:</b> Open Shop → Items and buy tools with Coins.</p>
+          <p><b>Use in game:</b> Tap the compact item dock. On PC, press 1-5 for Helmet, Bait, Combo, Stun, and Slow-Mo.</p>
+          <p><b>Second Chance:</b> This item is not shown in the dock because it triggers automatically when a run would end.</p>
         </div>
         <button type="button" id="resetDataBtn" class="btn danger">Reset Data</button>
       </div>
